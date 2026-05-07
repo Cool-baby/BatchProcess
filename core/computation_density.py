@@ -8,6 +8,7 @@
 """
 LAMBDA = 4  # 内存密集型任务超参数
 
+
 def comp_density(m_param, input_length, predicted_output_length, h, l, f_ser):
     """
     计算密集型任务估算
