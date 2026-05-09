@@ -38,9 +38,10 @@ class Task:
         self.mem_cost = 0
 
         # 推理结果
-        self.response = None
         self.output_length = None
         self.runtime_latency = None
+        # 是否推理完成 0 未完成，1 完成
+        self.finished = 0
 
     def save_inference_result(self, response, output_length, runtime_latency):
         """
@@ -82,3 +83,35 @@ class Task:
         print(f"Task ID: {self.task_id}, Task Type: {self.task_type}, Prompt: {self.prompt}, Response:{self.response}, "
               f"input length: {self.input_length}, output length:{self.output_length}, predicted output length: {self.predicted_output_length}, "
               f"computation density: {self.comp_density}")
+
+    def print_task_concise(self):
+        """
+        打印任务简略信息
+        """
+        print(f"Task ID: {self.task_id}, Task Type: {self.task_type}, "
+              f"input length: {self.input_length}, output length:{self.output_length}, predicted output length: {self.predicted_output_length}, "
+              f"computation density: {self.comp_density}")
+
+
+    def to_dict(self):
+        """
+        Task转dict，方便存储结果
+        """
+        return {
+            "task_id": self.task_id,
+            "task_type": self.task_type,
+            "prompt": self.prompt,
+
+            "input_length": self.input_length,
+            "comp_density": self.comp_density,
+
+            "output": self.output,
+            "output_length": self.output_length,
+            "predicted_output_length": self.predicted_output_length,
+
+            "comp_cost": self.comp_cost,
+            "mem_cost": self.mem_cost,
+
+            "runtime_latency": self.runtime_latency,
+            "finished": self.finished
+        }

@@ -14,7 +14,7 @@ from core.inference_engine import InferenceEngine
 from core.prefix_graph import build_prefix_graph
 from core.spectral_partition import spectral_partition
 from object.task import Task
-
+from utils import save_result
 
 # LLM超参数
 MODEL_PATH = "/home/hao/Workspace/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
@@ -22,7 +22,7 @@ M_PARAM=7e9  # 大规模模型的参数量
 LLM_L=32  # 大规模模型层数
 LLM_H=4096  # 每层隐藏维度
 LLM_H_KV=128  # KV头特征维度
-MAX_NEW_TOKENS = 256  # 最多生成多少个新 token
+MAX_NEW_TOKENS = 1024  # 最多生成多少个新 token
 
 # 服务器超参数
 SER_GPU_FP = 22e12  # 服务节点的浮点计算能力(FLOPS)
@@ -37,8 +37,8 @@ DATASET_TYPE = "chat"  # 数据集类型
 DATASET_SELECT_SEED = 43  # 数据集抽取随机种子
 
 # 批量大小超参数
-SAMPLE_SIZE = 200  # 每次总共产生多少任务
-MAX_SINGLE_BATCH_SIZE = 4  # 最大单批次大小
+SAMPLE_SIZE = 500  # 每次总共产生多少任务
+MAX_SINGLE_BATCH_SIZE = 16  # 最大单批次大小
 SCHEDULER = "bilateral"  # 批处理任务调度器
 
 
@@ -133,4 +133,8 @@ for batch_id, batch in enumerate(all_batches):
     total_latency += batch_latency
     print(f"[Batch {batch_id}]: latency = {batch_latency:.4f}s")
 
-print(f"Total latency : {total_latency}, Average latency : {total_latency / len(all_batches)}")
+print(f"Total latency : {total_latency}, average batch latency : {total_latency / len(all_batches)}, average task latency : {total_latency / len(tasks)}")
+
+
+# 保存任务结果
+save_result.save_tasks_to_csv(tasks)

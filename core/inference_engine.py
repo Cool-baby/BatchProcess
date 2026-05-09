@@ -33,6 +33,9 @@ class InferenceEngine:
         # model
         self.model = AutoModelForCausalLM.from_pretrained(model_path, dtype=torch.float16, device_map="auto", trust_remote_code=True)
 
+        self.model.generation_config.temperature = None
+        self.model.generation_config.top_p = None
+
         self.model.eval()
 
 
@@ -94,15 +97,9 @@ class InferenceEngine:
 
 
     def inference_batch(self, batch):
-        """
-        批处理
-        :param batch: 任务批次
-        :return: 当前批次处理时延
-        """
-        # 1. build prompts
+
         texts = self.build_prompts(batch)
 
-        # 一次性 tokenizer（消除 encode + pad warning）
         inputs = self.tokenizer(
             texts,
             return_tensors="pt",
@@ -110,32 +107,59 @@ class InferenceEngine:
             truncation=True
         ).to(self.model.device)
 
-        # 2. inference
+        prompt_length = inputs["input_ids"].shape[1]
+
+        # GPU timing
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+
         start_time = time.time()
 
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
                 max_new_tokens=self.max_new_tokens,
-                do_sample=False,  # 🔥 去掉 temperature/top_p warning
+                do_sample=False,
+                use_cache=True,
+                eos_token_id=self.tokenizer.eos_token_id,
                 pad_token_id=self.tokenizer.pad_token_id
             )
 
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         end_time = time.time()
-
         batch_latency = end_time - start_time
 
-        # 3. decode
-        decoded = self.tokenizer.batch_decode(
-            outputs,
-            skip_special_tokens=True
-        )
-
-        # 4. save results
         for i, task in enumerate(batch):
-            task.response = decoded[i]
-            task.runtime_latency = batch_latency
+            generated_tokens = outputs[i][prompt_length:]
+            # 找第一个EOS结束位置
+            eos_positions = (generated_tokens == self.tokenizer.eos_token_id).nonzero(as_tuple=True)[0]
 
-            task.output_length = len(outputs[i]) - len(inputs["input_ids"][i])
+            if len(eos_positions) > 0:
+                real_length = eos_positions[0].item()
+                generated_tokens = generated_tokens[:real_length]
+                finished = True
+            else:
+                real_length = generated_tokens.shape[0]
+                finished = False
+
+            # decode
+            response = self.tokenizer.decode(generated_tokens, skip_special_tokens=False)
+
+            # 去除user/assistant标记
+            for tag in ["<｜User｜>", "<｜Assistant｜>", "<|User|>", "<|Assistant|>", "<｜end▁of▁sentence｜>", "</s>", "<s>", "<eos>"]:
+                response = response.replace(tag, "")
+
+            response = response.strip()
+
+            # 提取think之后内容
+            if "</think>" in response:
+                response = response.split("</think>")[-1].strip()
+
+            # 保存结果
+            task.output = response
+            task.runtime_latency = batch_latency / len(batch)
+            task.output_length = real_length
+            task.finished = 1 if finished else 0
 
         return batch_latency
