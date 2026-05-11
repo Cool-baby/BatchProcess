@@ -98,7 +98,8 @@ class InferenceEngine:
 
     def inference_batch(self, batch):
 
-        texts = self.build_prompts(batch)
+        tasks_batch = batch.tasks
+        texts = self.build_prompts(tasks_batch)
 
         inputs = self.tokenizer(
             texts,
@@ -129,8 +130,9 @@ class InferenceEngine:
             torch.cuda.synchronize()
         end_time = time.time()
         batch_latency = end_time - start_time
+        batch.time_cost = batch_latency
 
-        for i, task in enumerate(batch):
+        for i, task in enumerate(tasks_batch):
             generated_tokens = outputs[i][prompt_length:]
             # 找第一个EOS结束位置
             eos_positions = (generated_tokens == self.tokenizer.eos_token_id).nonzero(as_tuple=True)[0]
@@ -139,9 +141,11 @@ class InferenceEngine:
                 real_length = eos_positions[0].item()
                 generated_tokens = generated_tokens[:real_length]
                 finished = True
+                batch.finished_tasks += 1
             else:
                 real_length = generated_tokens.shape[0]
                 finished = False
+                batch.truncated_tasks += 1
 
             # decode
             response = self.tokenizer.decode(generated_tokens, skip_special_tokens=False)
@@ -158,8 +162,12 @@ class InferenceEngine:
 
             # 保存结果
             task.output = response
-            task.runtime_latency = batch_latency / len(batch)
+            task.runtime_latency = batch_latency / batch.batch_size
             task.output_length = real_length
             task.finished = 1 if finished else 0
+            batch.total_generated_tokens += real_length
+
+        # 计算当前batch的token吞吐量
+        batch.tokens_throughput = batch.total_generated_tokens / batch.time_cost
 
         return batch_latency

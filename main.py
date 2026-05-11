@@ -13,6 +13,7 @@ from core.bidirectional_scan_scheduler import BidirectionalScanScheduler
 from core.inference_engine import InferenceEngine
 from core.prefix_graph import build_prefix_graph
 from core.spectral_partition import spectral_partition
+from object.batch import Batch
 from object.task import Task
 from utils import save_result
 
@@ -116,25 +117,25 @@ else:
 # 并对任务分类形成批次
 all_batches = []
 for cluster_id, task_group in enumerate(clusters):
-    print(f"\nCluster {cluster_id}")
     batches = scheduler.scheduling(task_group)
+    for batch_id, single_batch in enumerate(batches):
+        batch = Batch(cluster_id, batch_id, len(single_batch), single_batch)
+        all_batches.append(batch)
 
-    for batch_id, batch in enumerate(batches):
-        print(f"Batch {batch_id}: "f"{[task.task_id for task in batch]}")
+print(f"Batch division completed, total: {len(all_batches)}")
 
-    all_batches.extend(batches)
-
-print("\nStart batch processing\n")
+print("\nBatch processing Start \n")
 
 # 批处理任务
 total_latency = 0.0
 for batch_id, batch in enumerate(all_batches):
     batch_latency = inference_worker.inference_batch(batch)
     total_latency += batch_latency
-    print(f"[Batch {batch_id}]: latency = {batch_latency:.4f}s")
+    batch.print_batch()
+
+print("\nBatch processing End\n")
 
 print(f"Total latency : {total_latency}, average batch latency : {total_latency / len(all_batches)}, average task latency : {total_latency / len(tasks)}")
-
 
 # 保存任务结果
 save_result.save_tasks_to_csv(tasks)
