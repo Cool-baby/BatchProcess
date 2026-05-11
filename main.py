@@ -6,15 +6,15 @@
 @Date    ：2026/5/7 10:22 
 @Describe：main
 """
-import os
-from datasets import load_dataset
-
+from datetime import datetime
 from core.bidirectional_scan_scheduler import BidirectionalScanScheduler
 from core.inference_engine import InferenceEngine
 from core.prefix_graph import build_prefix_graph
 from core.spectral_partition import spectral_partition
+from data.running_result_analysis import analysis_tasks_result, analysis_batches_result
 from object.batch import Batch
-from object.task import Task
+from object.dataset_loader import DatasetLoader
+from object.task import generate_task_by_prompt
 from utils import save_result
 
 # LLM超参数
@@ -23,7 +23,7 @@ M_PARAM=7e9  # 大规模模型的参数量
 LLM_L=32  # 大规模模型层数
 LLM_H=4096  # 每层隐藏维度
 LLM_H_KV=128  # KV头特征维度
-MAX_NEW_TOKENS = 1024  # 最多生成多少个新 token
+MAX_NEW_TOKENS = 512  # 最多生成多少个新 token
 
 # 服务器超参数
 SER_GPU_FP = 22e12  # 服务节点的浮点计算能力(FLOPS)
@@ -38,61 +38,44 @@ DATASET_TYPE = "chat"  # 数据集类型
 DATASET_SELECT_SEED = 43  # 数据集抽取随机种子
 
 # 批量大小超参数
-SAMPLE_SIZE = 500  # 每次总共产生多少任务
-MAX_SINGLE_BATCH_SIZE = 16  # 最大单批次大小
+SAMPLE_SIZE = 16  # 每次总共产生多少任务
+MAX_SINGLE_BATCH_SIZE = 4  # 最大单批次大小
 SCHEDULER = "bilateral"  # 批处理任务调度器
 
+# 实验结果保存路径
+timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+TASK_LOG_SAVE_PATH = f"./data/task_logs/tasks_logs_{timestamp}.csv"
+BATCH_LOG_SAVE_PATH = f"./data/batch_logs/batch_logs_{timestamp}.csv"
 
 # 加载数据集
-if os.path.exists(DATASET_LOCAL_PATH):
-    # 优先加载本地数据集
-    dataset = load_dataset(DATASET_LOCAL_PATH, split="train")
-    print(f"Load local dataset: {len(dataset)}")
-else:
-    # 本地不存在则自动下载并保存
-    dataset = load_dataset(DATASET_NAME, split="train")
-    print(f"Download dataset: {len(dataset)}")
+dataset = DatasetLoader(DATASET_NAME, DATASET_LOCAL_PATH, DATASET_TYPE)
 
-# 抽取一定数量的样本
-dataset = dataset.shuffle(seed=DATASET_SELECT_SEED)
-# 直接选择前 SAMPLE_SIZE 个
-samples = dataset.select(range(SAMPLE_SIZE))
+# 抽取 SAMPLE_SIZE 个数量的样本
+samples = dataset.extract_data(DATASET_SELECT_SEED, SAMPLE_SIZE)
 
 # 加载LLM推理引擎
 inference_worker = InferenceEngine(MODEL_PATH, MAX_NEW_TOKENS)
-# tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, trust_remote_code=True)
 
-# 构建任务
-tasks = []
+# 从数据集抽取的数据构建任务
+all_tasks = []
 for idx, sample in enumerate(samples):
+    # 构建任务对象并加入列表
+    temp_task = generate_task_by_prompt(DATASET_NAME, DATASET_TYPE, idx, sample)
 
-    # 如果是WildChat对话
-    if DATASET_NAME == "allenai/WildChat":
-        # 提取此对话prompt
-        conversation = sample["conversation"]
-        if len(conversation) == 0:
-            continue
-        prompt = conversation[0]["content"]
-
-        # 空prompt过滤
-        if prompt is None or len(prompt.strip()) == 0:
-            continue
-
-        # 构建任务对象并加入列表
-        task = Task(task_id=idx, task_type=DATASET_TYPE, prompt=prompt)
-
+    if temp_task is not None:
         # tokenizer处理prompt
-        ids = inference_worker.get_prompt_token(prompt)
-        task.input_length = len(ids)
-
-        tasks.append(task)
+        ids = inference_worker.get_prompt_token(temp_task.prompt)
+        temp_task.input_length = len(ids)
     else:
-        raise Exception(f"Dataset {DATASET_NAME} not implemented")
+        print(f"Invalid/blank data")
+        continue
 
-print(f"Loaded Tasks: {len(tasks)}")
+    all_tasks.append(temp_task)
+
+print(f"Loaded Tasks: {len(all_tasks)}")
 
 # 预测每个任务输出长度并计算每个任务计算密度
-for task in tasks:
+for task in all_tasks:
     # 预测任务输出长度
     task.predicted_output()
     # 计算任务计算密度
@@ -100,12 +83,12 @@ for task in tasks:
     # task.print_task()
 
 # 构建 Prefix Graph
-G = build_prefix_graph(tasks)
-print(f"Prefix graph construction completed. Nodes: {G.number_of_nodes()}, Edges: {G.number_of_edges()}")
+G = build_prefix_graph(all_tasks)
+print(f"Prefix graph construction completed, nodes: {G.number_of_nodes()}, edges: {G.number_of_edges()}")
 
 # 谱聚类
 clusters = spectral_partition(G, num_clusters=SER_NUMBER)
-print(f"Spectral clustering completed. Cluster Number: {len(clusters)}")
+print(f"Spectral clustering completed, total Clusters: {len(clusters)}")
 
 # 初始化任务调度器
 scheduler = None
@@ -122,20 +105,23 @@ for cluster_id, task_group in enumerate(clusters):
         batch = Batch(cluster_id, batch_id, len(single_batch), single_batch)
         all_batches.append(batch)
 
-print(f"Batch division completed, total: {len(all_batches)}")
+print(f"Batch division completed, total batches: {len(all_batches)}")
 
 print("\nBatch processing Start \n")
 
 # 批处理任务
 total_latency = 0.0
 for batch_id, batch in enumerate(all_batches):
-    batch_latency = inference_worker.inference_batch(batch)
+    batch_latency = inference_worker.inference_batch(batch)  # 批处理
     total_latency += batch_latency
     batch.print_batch()
 
+    # 每个批次信息及时保存
+    save_result.append_tasks_to_csv(batch.tasks, TASK_LOG_SAVE_PATH)
+    save_result.append_batch_to_csv(batch, BATCH_LOG_SAVE_PATH)
+
 print("\nBatch processing End\n")
 
-print(f"Total latency : {total_latency}, average batch latency : {total_latency / len(all_batches)}, average task latency : {total_latency / len(tasks)}")
-
-# 保存任务结果
-save_result.save_tasks_to_csv(tasks)
+# 结果分析
+analysis_tasks_result(all_tasks)
+analysis_batches_result(all_batches)

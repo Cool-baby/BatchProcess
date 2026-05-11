@@ -41,6 +41,30 @@ class Batch:
         """
         打印当前batch信息
         """
-        print(f"Cluster {self.cluster_id}, batch {self.batch_id}, batch size: {self.batch_size} (finished: {self.finished_tasks}, truncated: {self.truncated_tasks}), "
-              f"generated tokens: {self.total_generated_tokens}, throughput: {self.tokens_throughput} tokens/sec, "
+        print(f"Cluster {self.cluster_id}, batch {self.batch_id}, batch size: {self.batch_size} (finished: {self.finished_tasks}, truncated: {self.truncated_tasks}, finished rate: {self.finished_tasks / self.batch_size:.2f}), "
+              f"generated tokens: {self.total_generated_tokens}, throughput: {self.tokens_throughput:.4f} tk/s, handle time: {self.time_cost:.4f} s, "
               f"tasks: {[task.task_id for task in self.tasks]}")
+
+    def to_dict(self):
+        """
+        Batch转dict，方便存储结果
+        """
+        return {
+            "cluster_id": self.cluster_id,
+            "batch_id": self.batch_id,
+            "batch_size": self.batch_size,
+
+            # list转字符串保存
+            "tasks": str([task.task_id for task in self.tasks]),
+
+            # latency
+            "time_cost": self.time_cost,
+
+            # token统计
+            "total_generated_tokens": self.total_generated_tokens,
+            "tokens_throughput": self.tokens_throughput,
+
+            # completion统计
+            "finished_tasks": self.finished_tasks,
+            "truncated_tasks": self.truncated_tasks,
+        }

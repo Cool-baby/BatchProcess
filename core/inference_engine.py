@@ -162,7 +162,7 @@ class InferenceEngine:
 
             # 保存结果
             task.output = response
-            task.runtime_latency = batch_latency / batch.batch_size
+            task.runtime_latency = batch_latency
             task.output_length = real_length
             task.finished = 1 if finished else 0
             batch.total_generated_tokens += real_length

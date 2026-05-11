@@ -38,23 +38,9 @@ class Task:
         self.mem_cost = 0
 
         # 推理结果
-        self.output_length = None
         self.runtime_latency = None
         # 是否推理完成 0 未完成，1 完成
         self.finished = 0
-
-    def save_inference_result(self, response, output_length, runtime_latency):
-        """
-        存入推理结果
-        :param response:
-        :param output_length:
-        :param runtime_latency:
-        :return:
-        """
-        self.response = response
-        self.output_length = output_length
-        self.runtime_latency = runtime_latency
-
 
     def cal_computation_density(self, m_param, l, h, h_kv, f_ser, bandwidth):
         """
@@ -115,3 +101,29 @@ class Task:
             "runtime_latency": self.runtime_latency,
             "finished": self.finished
         }
+
+
+def generate_task_by_prompt(dataset_name, dataset_type, idx, single_data):
+    """
+    基于数据集中的单个数据生成一个任务对象
+    :param dataset_name: 数据集名称
+    :param dataset_type: 任务类型
+    :param idx: 任务序号
+    :param single_data: 数据集中的单个数据
+    :return: Task Object
+    """
+    # 如果是WildChat对话
+    if dataset_name == "allenai/WildChat":
+        # 提取此对话prompt
+        conversation = single_data["conversation"]
+        if len(conversation) == 0:
+            return None
+        prompt = conversation[0]["content"]
+
+        # 空prompt过滤
+        if prompt is None or len(prompt.strip()) == 0:
+            return None
+    else:
+        raise Exception(f"Dataset {dataset_name} not implemented")
+
+    return Task(idx, dataset_type, prompt)
