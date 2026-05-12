@@ -9,7 +9,7 @@
 import networkx as nx
 from typing import List
 
-from core.prompt_distance import prefix_distance
+from core.graph_build.prompt_distance import prefix_distance
 from object.task import Task
 
 

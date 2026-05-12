@@ -7,7 +7,7 @@
 @Describe：Task对象
 """
 import random
-from core.computation_density import task_density
+from core.scheduler.computation_density import task_density
 
 
 class Task:

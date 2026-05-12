@@ -7,10 +7,10 @@
 @Describe：main
 """
 from datetime import datetime
-from core.bidirectional_scan_scheduler import BidirectionalScanScheduler
-from core.inference_engine import InferenceEngine
-from core.prefix_graph import build_prefix_graph
-from core.spectral_partition import spectral_partition
+from core.scheduler.bidirectional_scan_scheduler import BidirectionalScanScheduler
+from core.inference.inference_engine import InferenceEngine
+from core.graph_build.prefix_graph import build_prefix_graph
+from core.graph_build.spectral_partition import spectral_partition
 from data.running_result_analysis import analysis_tasks_result, analysis_batches_result
 from object.batch import Batch
 from object.dataset_loader import DatasetLoader
