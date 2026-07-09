@@ -7,7 +7,34 @@
 @Describe：数据集加载器
 """
 import os
+import hashlib
 from datasets import load_dataset
+from object.prompt import Prompt
+
+
+def extract_prompt(selected_datas):
+    """
+    从选取的数据集中提出prompt
+    :param selected_datas: 从数据集中选取的数据
+    :return: prompt数组
+    """
+    prompts = []
+
+    for sample in selected_datas:
+        if "conversation" in sample:
+            prompt = sample["conversation"][0]["content"]
+        elif "message" in sample:
+            prompt = sample["message"][0]["content"]
+        else:
+            continue
+
+        prompt = prompt.strip()
+        # 获取一个唯一ID
+        prompt_id = hashlib.sha256(prompt.encode()).hexdigest()[:16]
+        # 创建Prompt对象并加入列表
+        prompts.append(Prompt(prompt_id, prompt))
+
+    return prompts
 
 
 class DatasetLoader:
