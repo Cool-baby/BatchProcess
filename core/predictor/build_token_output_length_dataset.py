@@ -14,10 +14,10 @@ from utils import save_result
 import logging
 
 # 模型名称及本地路径
-# MODEL_INFO = {"model_name": "Qwen2.5-7B", "model_path": "/home/hao/Workspace/models/qwen/Qwen2.5-7B-Instruct" }
 # MODEL_INFO = {"model_name": "Qwen2.5-3B-Instruct", "model_path": "/home/hao/Workspace/models/qwen/Qwen2.5-3B-Instruct" }
 MODEL_INFO = {"model_name": "Llama-3.2-3B-Instruct", "model_path": "/home/hao/Workspace/models/meta-llama/Llama-3.2-3B-Instruct" }
 # MODEL_INFO = {"model_name": "Deepseek-R1-1.5B", "model_path": "/home/hao/Workspace/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B" }
+# MODEL_INFO = {"model_name": "Qwen2.5-7B", "model_path": "/home/hao/Workspace/models/qwen/Qwen2.5-7B-Instruct" }
 # MODEL_INFO = {"model_name": "Llama3-8B", "model_path": "/home/hao/Workspace/models/meta-llama/Meta-Llama-3-8B-Instruct" }
 
 # 数据集名称、路径、类型
@@ -42,9 +42,9 @@ logging.basicConfig(
 )
 
 # 数据集取多少个Prompt
-NUM_PROMPTS = 200
+NUM_PROMPTS = 100
 # 批处理大小
-BATCH_SIZE = 16
+BATCH_SIZE = 4
 # 最大输出token数量
 MAX_NEW_TOKENS = 1024
 
@@ -70,19 +70,20 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # 加载tokenizer
 logging.info("Loading tokenizer...")
-tokenizer = AutoTokenizer.from_pretrained(MODEL_INFO["model_path"], trust_remote_code=True, padding_side="left")
+tokenizer = AutoTokenizer.from_pretrained(MODEL_INFO["model_path"], trust_remote_code=True)
 if "Llama" in MODEL_INFO["model_name"]:  # 如果是Llama模型，需要手动设置
+    tokenizer.padding_side = "left"
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.model_max_length = MAX_NEW_TOKENS
 
 # 加载模型
-logging.info("Loading model...")
+logging.info(f"Loading model - {MODEL_INFO['model_name']}")
 model = AutoModelForCausalLM.from_pretrained(MODEL_INFO["model_path"], dtype=DTYPE, device_map="auto", trust_remote_code=True)
 model.eval()
 logging.info(model.hf_device_map)
 
 # 加载数据集
-logging.info("Loading dataset...")
+logging.info(f"Loading dataset - {DATASET_NAME}")
 dataset = DatasetLoader(DATASET_NAME, DATASET_LOCAL_PATH, DATASET_TYPE)
 samples = dataset.extract_data(SEED, NUM_PROMPTS)
 prompts = extract_prompt(samples)
@@ -153,9 +154,10 @@ while len(active_batch) > 0:
         generated_ids = outputs[idx][input_lengths[idx]:]
         # 解码生成文本
         output_text = tokenizer.decode(generated_ids, skip_special_tokens=True)
-        # logging.debug(f"{prompt.prompt_text}: {output_text}")
         # 输出 Token 数量
         output_length = len(generated_ids)
+        # logging.info(f"{prompt.prompt_text}: <{output_length}>\n{output_text}")
+        # print(f"input_length: {input_lengths[idx]}, output_total_length: {len(outputs[idx])}, generated_length: {len(generated_ids)}, decoded: {tokenizer.decode(generated_ids, skip_special_tokens=True)}")
         # 更新 Prompt 对象
         prompt.add_output_result(output_length, output_text)
         # 判断是否已经稳定
