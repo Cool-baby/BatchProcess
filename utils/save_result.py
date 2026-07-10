@@ -77,10 +77,6 @@ def append_prompt_to_csv(prompt, save_path):
     df = pd.DataFrame([prompt.to_dict()])
 
     if not os.path.exists(save_path):
-        directory = os.path.dirname(save_path)
-        # 检查目录是否存在，如果不存在，则创建它
-        if not os.path.exists(directory):
-            os.makedirs(directory)
         df.to_csv(save_path, index=False, encoding="utf-8-sig", mode="w")
     else:
         df.to_csv(save_path, index=False, encoding="utf-8-sig", mode="a", header=False)

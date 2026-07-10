@@ -26,7 +26,7 @@ class Prompt:
         # 迭代次数
         self.repeat_times = 0
         # 是否稳定
-        self.finished = False
+        self.finished = -1
 
     def add_output_result(self, output_length, output_text=None):
         """
@@ -49,12 +49,13 @@ class Prompt:
         :param max_repeat_times: 规定的最大迭代次数
         :param median_threshold: 中位数阈值差异限制
         :param min_token_delta: 至少允许token差异数
+        :return -1：未稳定； 0：达到最大上限结束； 1：因稳定早结束
         """
         if self.repeat_times >= max_repeat_times:
-            return True
+            return 0
 
         if self.repeat_times < min_repeat_times:
-            return False
+            return -1
 
         # 计算当前中位数和容忍阈值
         temp_median = np.median(self.output_token_lengths)
@@ -64,7 +65,10 @@ class Prompt:
         last2 = self.output_token_lengths[-2]
 
         # 最近两次差异值小与阈值则稳定
-        return abs(last1 - temp_median) <= delta and abs(last2 - temp_median) <= delta
+        if abs(last1 - temp_median) <= delta and abs(last2 - temp_median) <= delta:
+            return 1
+        else:
+            return -1
 
     def print_prompt(self):
         """
