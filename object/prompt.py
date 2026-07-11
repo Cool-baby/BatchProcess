@@ -27,16 +27,20 @@ class Prompt:
         self.repeat_times = 0
         # 是否稳定
         self.finished = -1
+        # 推理模型
+        self.inference_model = None
 
-    def add_output_result(self, output_length, output_text=None):
+    def add_output_result(self, output_length, inference_model = None, output_text=None):
         """
         添加一次推理结果
         :param output_length: 输出的token长度
+        :param inference_model: 推理此Prompt的模型
         :param output_text: 输出的文本内容（可选）
         :return:
         """
         # 重复次数+1
         self.repeat_times += 1
+        self.inference_model = inference_model
 
         # 存储token长度
         self.output_token_lengths.append(output_length)
@@ -86,5 +90,6 @@ class Prompt:
             "output_token_lengths": str(self.output_token_lengths),
             "output_texts": str(self.output_texts),
             "repeat_times": self.repeat_times,
+            "inference_model": self.inference_model,
             "finished": self.finished
         }

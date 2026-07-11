@@ -14,8 +14,8 @@ from utils import save_result
 import logging
 
 # 模型名称及本地路径
-# MODEL_INFO = {"model_name": "Qwen2.5-3B-Instruct", "model_path": "/home/hao/Workspace/models/qwen/Qwen2.5-3B-Instruct" }
-MODEL_INFO = {"model_name": "Llama-3.2-3B-Instruct", "model_path": "/home/hao/Workspace/models/meta-llama/Llama-3.2-3B-Instruct" }
+MODEL_INFO = {"model_name": "Qwen2.5-3B-Instruct", "model_path": "/home/hao/Workspace/models/qwen/Qwen2.5-3B-Instruct" }
+# MODEL_INFO = {"model_name": "Llama-3.2-3B-Instruct", "model_path": "/home/hao/Workspace/models/meta-llama/Llama-3.2-3B-Instruct" }
 # MODEL_INFO = {"model_name": "Deepseek-R1-1.5B", "model_path": "/home/hao/Workspace/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B" }
 # MODEL_INFO = {"model_name": "Qwen2.5-7B", "model_path": "/home/hao/Workspace/models/qwen/Qwen2.5-7B-Instruct" }
 # MODEL_INFO = {"model_name": "Llama3-8B", "model_path": "/home/hao/Workspace/models/meta-llama/Meta-Llama-3-8B-Instruct" }
@@ -27,7 +27,7 @@ DATASET_TYPE = "chat"
 
 # 数据保存路径
 SAVE_DIR = "./output"
-CSV_PATH = f"{SAVE_DIR}/{MODEL_INFO["model_name"]}/results.csv"
+CSV_PATH = f"{SAVE_DIR}/{MODEL_INFO["model_name"]}/results-260711.csv"
 
 # 检查目录是否存在，如果不存在，则创建它
 directory = os.path.dirname(CSV_PATH)
@@ -38,13 +38,13 @@ logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[logging.StreamHandler(), logging.FileHandler(f"{SAVE_DIR}/{MODEL_INFO["model_name"]}/run.log", encoding="utf-8")]
+    handlers=[logging.StreamHandler(), logging.FileHandler(f"{SAVE_DIR}/{MODEL_INFO["model_name"]}/run-260711.log", encoding="utf-8")]
 )
 
 # 数据集取多少个Prompt
-NUM_PROMPTS = 100
+NUM_PROMPTS = 1200
 # 批处理大小
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 # 最大输出token数量
 MAX_NEW_TOKENS = 1024
 
@@ -71,10 +71,9 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # 加载tokenizer
 logging.info("Loading tokenizer...")
 tokenizer = AutoTokenizer.from_pretrained(MODEL_INFO["model_path"], trust_remote_code=True)
-if "Llama" in MODEL_INFO["model_name"]:  # 如果是Llama模型，需要手动设置
-    tokenizer.padding_side = "left"
+if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.model_max_length = MAX_NEW_TOKENS
+tokenizer.padding_side = "left"
 
 # 加载模型
 logging.info(f"Loading model - {MODEL_INFO['model_name']}")
@@ -126,13 +125,10 @@ while len(active_batch) > 0:
     )
 
     # 将所有Tensor移动到GPU
-    inputs = {
-        k: v.cuda()
-        for k, v in inputs.items()
-    }
+    inputs = {k: v.cuda() for k, v in inputs.items()}
 
     # 计算每个Prompt自己的输入长度
-    input_lengths = inputs["attention_mask"].sum(dim=1).tolist()
+    input_seq_len = inputs["input_ids"].shape[1]
 
     # 3. generate
     with torch.inference_mode():
@@ -151,15 +147,21 @@ while len(active_batch) > 0:
     # 4. 更新Prompt对象
     for idx, prompt in enumerate(active_batch):
         # 获取模型新生成的 Token
-        generated_ids = outputs[idx][input_lengths[idx]:]
+        generated_ids_with_pad = outputs[idx][input_seq_len:]
+        eos_positions = (generated_ids_with_pad == tokenizer.eos_token_id).nonzero(as_tuple=True)[0]
+        if len(eos_positions) > 0:
+            first_eos_idx = eos_positions[0].item()
+            # 截取到第一个 eos_token 为止（不包含eos本身，如果你想算入结束符，则改为 first_eos_idx + 1）
+            true_generated_ids = generated_ids_with_pad[:first_eos_idx]
+        else:
+            # 如果没生成 eos（即跑满了 max_new_tokens），为安全起见去除可能的 pad
+            true_generated_ids = generated_ids_with_pad[generated_ids_with_pad != tokenizer.pad_token_id]
         # 解码生成文本
-        output_text = tokenizer.decode(generated_ids, skip_special_tokens=True)
+        output_text = tokenizer.decode(true_generated_ids, skip_special_tokens=True)
         # 输出 Token 数量
-        output_length = len(generated_ids)
-        # logging.info(f"{prompt.prompt_text}: <{output_length}>\n{output_text}")
-        # print(f"input_length: {input_lengths[idx]}, output_total_length: {len(outputs[idx])}, generated_length: {len(generated_ids)}, decoded: {tokenizer.decode(generated_ids, skip_special_tokens=True)}")
+        output_length = len(true_generated_ids)
         # 更新 Prompt 对象
-        prompt.add_output_result(output_length, output_text)
+        prompt.add_output_result(output_length, MODEL_INFO['model_name'],output_text)
         # 判断是否已经稳定
         prompt.finished = prompt.is_stable(MIN_REPEAT_TIMES, MAX_REPEAT_TIMES, MEDIAN_THRESHOLD, MIN_TOKEN_DELTA)
 
@@ -183,6 +185,14 @@ while len(active_batch) > 0:
         next_prompt_idx += 1
 
     batch_finished_counter += 1
+
+    # 7. 显存清理，防止 OOM
+    del inputs
+    del outputs
+    # 释放没用的显存碎片，每跑 5-10 个 Batch 清理一次
+    if batch_finished_counter % 10 == 0:
+        torch.cuda.empty_cache()
+
     logging.info(f"Batch Processed: {batch_finished_counter}")
 
 logging.info("Finished processing.")
