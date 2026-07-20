@@ -14,8 +14,8 @@ from utils import save_result
 import logging
 
 # 模型名称及本地路径
-MODEL_INFO = {"model_name": "Qwen2.5-3B-Instruct", "model_path": "/home/hao/Workspace/models/qwen/Qwen2.5-3B-Instruct" }
-# MODEL_INFO = {"model_name": "Llama-3.2-3B-Instruct", "model_path": "/home/hao/Workspace/models/meta-llama/Llama-3.2-3B-Instruct" }
+# MODEL_INFO = {"model_name": "Qwen2.5-3B-Instruct", "model_path": "/home/hao/Workspace/models/qwen/Qwen2.5-3B-Instruct" }
+MODEL_INFO = {"model_name": "Llama-3.2-3B-Instruct", "model_path": "/home/hao/Workspace/models/meta-llama/Llama-3.2-3B-Instruct" }
 # MODEL_INFO = {"model_name": "Deepseek-R1-1.5B", "model_path": "/home/hao/Workspace/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B" }
 # MODEL_INFO = {"model_name": "Qwen2.5-7B", "model_path": "/home/hao/Workspace/models/qwen/Qwen2.5-7B-Instruct" }
 # MODEL_INFO = {"model_name": "Llama3-8B", "model_path": "/home/hao/Workspace/models/meta-llama/Meta-Llama-3-8B-Instruct" }
@@ -27,7 +27,7 @@ DATASET_TYPE = "chat"
 
 # 数据保存路径
 SAVE_DIR = "./output"
-CSV_PATH = f"{SAVE_DIR}/{MODEL_INFO["model_name"]}/results-260711.csv"
+CSV_PATH = f"{SAVE_DIR}/{MODEL_INFO["model_name"]}/results.csv"
 
 # 检查目录是否存在，如果不存在，则创建它
 directory = os.path.dirname(CSV_PATH)
@@ -38,7 +38,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[logging.StreamHandler(), logging.FileHandler(f"{SAVE_DIR}/{MODEL_INFO["model_name"]}/run-260711.log", encoding="utf-8")]
+    handlers=[logging.StreamHandler(), logging.FileHandler(f"{SAVE_DIR}/{MODEL_INFO["model_name"]}/run.log", encoding="utf-8")]
 )
 
 # 数据集取多少个Prompt
@@ -47,6 +47,8 @@ NUM_PROMPTS = 1200
 BATCH_SIZE = 8
 # 最大输出token数量
 MAX_NEW_TOKENS = 1024
+# 最大输入token数量
+MAX_INPUT_TOKENS = 2048
 
 # 模型参数
 TEMPERATURE = 0.8
@@ -121,7 +123,8 @@ while len(active_batch) > 0:
         batch_prompts,
         return_tensors="pt",
         padding=True,
-        truncation=True
+        truncation=True,
+        max_length=MAX_INPUT_TOKENS  # 限制最大的Prompt输入长度，避免OOM
     )
 
     # 将所有Tensor移动到GPU
