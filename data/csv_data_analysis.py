@@ -7,30 +7,42 @@
 @Describe： CSV文件数据分析
 """
 import pandas as pd
+import ast
+import numpy as np
 
 
-def tasks_log_analysis(csv_path):
-    # 读取 CSV
-    df = pd.read_csv(csv_path)
+csv_path = "results-llama3.2-3B.csv"
 
-    # 过滤完成的有效任务
-    valid_df = df[df["finished"] == True].copy()
+# 读取CSV
+df = pd.read_csv(csv_path, encoding="utf-8")
 
-    # 平均处理时延（Average Latency）
-    avg_latency = valid_df["runtime_latency"].mean()
-    print(f"Average Latency: {avg_latency:.4f} s")
-
-    # 计算每秒生成 token 数
-    total_tokens = valid_df["output_length"].sum()
-    total_time = valid_df["runtime_latency"].sum()
-    tokens_per_sec = total_tokens / total_time
-    print(f"Throughput: {tokens_per_sec:.2f} tokens/s")
-
-    # 计算系统级吞吐量（Tasks/s）
-    task_throughput = len(valid_df) / total_time
-    print(f"Task Throughput: {task_throughput:.2f} tasks/s")
+print("数据总行数:", len(df))
+print("列名:", df.columns.tolist())
 
 
-if __name__ == "__main__":
-    csv_path = "./task_logs/tasks_logs_20260511182223.csv"
-    tasks_log_analysis(csv_path)
+# 逐行读取
+for index, row in df.iterrows():
+
+    prompt_id = row["prompt_id"]
+    prompt = row["prompt_text"]
+
+    # out_put_token 是字符串，需要转换为list
+    output_tokens = ast.literal_eval(row["output_token_lengths"])
+
+    # 计算统计量
+    median_token = np.median(output_tokens)
+    worst_token = np.max(output_tokens)
+    std_token = np.std(output_tokens)
+
+    print("=" * 80)
+    print("Index:", index)
+    print("Prompt ID:", prompt_id)
+    print("Prompt:", prompt)
+
+    print("Output Token Array:")
+    print(output_tokens)
+
+    print("Statistics:")
+    print("Median:", median_token)
+    print("Worst:", worst_token)
+    print("STD:", std_token)

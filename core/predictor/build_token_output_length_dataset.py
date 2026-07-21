@@ -21,13 +21,14 @@ MODEL_INFO = {"model_name": "Llama-3.2-3B-Instruct", "model_path": "/home/hao/Wo
 # MODEL_INFO = {"model_name": "Llama3-8B", "model_path": "/home/hao/Workspace/models/meta-llama/Meta-Llama-3-8B-Instruct" }
 
 # 数据集名称、路径、类型
-DATASET_NAME = "allenai/WildChat"
-DATASET_LOCAL_PATH = "/home/hao/Workspace/datasets/WildChat"
-DATASET_TYPE = "chat"
+# DATASET_INFO = {"dataset_name": "WildChat", "full_name": "allenai/WildChat", "path": "/home/hao/Workspace/datasets/WildChat", "type": "chat"}
+# DATASET_INFO = {"dataset_name": "GSM8K", "full_name": "openai/gsm8k", "path": "/home/hao/Workspace/datasets/gsm8k", "type": "math"}
+DATASET_INFO = {"dataset_name": "MBPP", "full_name": "google-research/mbpp", "path": "/home/hao/Workspace/datasets/mbpp", "type": "coding"}
+# DATASET_INFO = {"dataset_name": "LongBench", "full_name": "zai-org/LongBench", "path": "/home/hao/Workspace/datasets/LongBench", "type": "long sequence"}
 
 # 数据保存路径
 SAVE_DIR = "./output"
-CSV_PATH = f"{SAVE_DIR}/{MODEL_INFO["model_name"]}/results.csv"
+CSV_PATH = f"{SAVE_DIR}/{MODEL_INFO['model_name']}/results-{MODEL_INFO['model_name']}-{DATASET_INFO['dataset_name']}.csv"
 
 # 检查目录是否存在，如果不存在，则创建它
 directory = os.path.dirname(CSV_PATH)
@@ -38,7 +39,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[logging.StreamHandler(), logging.FileHandler(f"{SAVE_DIR}/{MODEL_INFO["model_name"]}/run.log", encoding="utf-8")]
+    handlers=[logging.StreamHandler(), logging.FileHandler(f"{SAVE_DIR}/{MODEL_INFO['model_name']}/run.log", encoding="utf-8")]
 )
 
 # 数据集取多少个Prompt
@@ -59,7 +60,7 @@ DEVICE_MAP = "auto"
 SEED = 42
 
 # APS参数
-MEDIAN_THRESHOLD = 0.05  # 与中位数允许偏差(3%)
+MEDIAN_THRESHOLD = 0.05  # 与中位数允许偏差(5%)
 MAX_REPEAT_TIMES = 16  # 每个Prompt最多采样次数
 MIN_REPEAT_TIMES = 3  # 每个Prompt最少采样次数
 MIN_TOKEN_DELTA = 3  # 至少允许3token
@@ -84,13 +85,15 @@ model.eval()
 logging.info(model.hf_device_map)
 
 # 加载数据集
-logging.info(f"Loading dataset - {DATASET_NAME}")
-dataset = DatasetLoader(DATASET_NAME, DATASET_LOCAL_PATH, DATASET_TYPE)
+logging.info(f"Loading dataset - {DATASET_INFO['dataset_name']}")
+dataset = DatasetLoader(DATASET_INFO['full_name'], DATASET_INFO['path'], DATASET_INFO['type'])
 samples = dataset.extract_data(SEED, NUM_PROMPTS)
 prompts = extract_prompt(samples)
 
 # 当前要运行的batch
 active_batch = []
+# 实际加载了多少条数据
+number_of_real_data = len(prompts)
 # 下一个待加入batch的prompt
 next_prompt_idx = 0
 # 记录已经处理了多少个prompt
@@ -99,7 +102,7 @@ prompt_finished_counter = 0
 batch_finished_counter = 0
 
 # 初始化batch
-while len(active_batch) < BATCH_SIZE and next_prompt_idx < len(prompts):
+while len(active_batch) < BATCH_SIZE and next_prompt_idx < number_of_real_data:
     active_batch.append(prompts[next_prompt_idx])
     next_prompt_idx += 1
 logging.info("Batch initialization successful, starting batch processing...")
@@ -178,7 +181,7 @@ while len(active_batch) > 0:
             save_result.append_prompt_to_csv(prompt, CSV_PATH)
             logging.info(f"Prompt {prompt.prompt_id} Finished after {prompt.repeat_times} iterations.")
             prompt_finished_counter += 1
-            logging.info(f"Processed: {prompt_finished_counter}, Remaining: {NUM_PROMPTS - prompt_finished_counter}, Progress: {(prompt_finished_counter / NUM_PROMPTS) * 100:.2f}%")
+            logging.info(f"Processed: {prompt_finished_counter}, Remaining: {number_of_real_data - prompt_finished_counter}, Progress: {(prompt_finished_counter / number_of_real_data) * 100:.2f}%")
     active_batch = new_active_batch
 
     # 6. 加入新的Prompt
