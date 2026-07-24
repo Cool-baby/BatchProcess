@@ -44,7 +44,7 @@ def extract_prompt(selected_datas):
 
 
 class DatasetLoader:
-    def __init__(self, dataset_name, dataset_local_path, dataset_type):
+    def __init__(self, dataset_name, dataset_local_path, dataset_type, split_way = "train"):
         """
         数据集加载器
         :param dataset_name: 数据集名称
@@ -60,13 +60,15 @@ class DatasetLoader:
         if os.path.exists(self.dataset_local_path):
             # 优先加载本地数据集
             if self.dataset_name == "allenai/WildChat":
-                self.dataset = load_dataset(self.dataset_local_path, split="train")
+                self.dataset = load_dataset(self.dataset_local_path, split=split_way)
             elif self.dataset_name == "openai/gsm8k":
-                self.dataset = load_dataset(self.dataset_local_path, "main", split="train")
+                self.dataset = load_dataset(self.dataset_local_path, "main", split=split_way)
             elif self.dataset_name == "google-research/mbpp":
-                self.dataset = load_dataset("json", data_files=f"{self.dataset_local_path}/sanitized-mbpp.json", split="train")
+                self.dataset = load_dataset("json", data_files=f"{self.dataset_local_path}/sanitized-mbpp.json", split=split_way)
             elif self.dataset_name == "zai-org/LongBench":
-                self.dataset = load_dataset("json", data_files=f"{self.dataset_local_path}/data/multi_news.jsonl", split="train")
+                self.dataset = load_dataset("json", data_files=f"{self.dataset_local_path}/data/multi_news.jsonl", split=split_way)
+                # self.dataset = load_dataset("json", data_files=f"{self.dataset_local_path}/data/2wikimqa.jsonl", split=split_way)
+                # self.dataset = load_dataset("json", data_files=f"{self.dataset_local_path}/data/qasper.jsonl", split=split_way)
             else:
                 raise ValueError(f"Unknown dataset {self.dataset_name}.")
         else:
