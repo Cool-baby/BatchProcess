@@ -6,43 +6,77 @@
 @Date    ：2026/5/11 18:25 
 @Describe： CSV文件数据分析
 """
-import pandas as pd
+import csv
+import json
 import ast
 import numpy as np
+import os
+
+CSV_FILES = [
+    # "./raw/results-Llama-3.2-3B-Instruct-WildChat.csv",
+    # "./raw/results-Llama-3.2-3B-Instruct-WildChat (new).csv",
+    # "./raw/results-Qwen2.5-3B-Instruct-WildChat.csv",
+    # "./raw/results-Llama-3.2-3B-Instruct-GSM8K.csv",
+    # "./raw/results-Qwen2.5-3B-Instruct-GSM8K.csv",
+    # "./raw/results-Llama-3.2-3B-Instruct-LongBench.csv",
+    # "./raw/results-Llama-3.2-3B-Instruct-LongBench(qasper).csv",
+    # "./raw/results-Qwen2.5-3B-Instruct-LongBench.csv",
+]
 
 
-csv_path = "results-llama3.2-3B.csv"
-
-# 读取CSV
-df = pd.read_csv(csv_path, encoding="utf-8")
-
-print("数据总行数:", len(df))
-print("列名:", df.columns.tolist())
+OUTPUT_JSONL = "token_length_dataset.jsonl"
 
 
-# 逐行读取
-for index, row in df.iterrows():
+def process_csv_to_jsonl(input_csv, output_jsonl):
+    with open(input_csv, "r", encoding="utf-8-sig") as fin, open(output_jsonl, "a", encoding="utf-8") as fout:
+        reader = csv.DictReader(fin)
+        total, skipped = 0, 0
+        for idx, row in enumerate(reader):
+            try:
+                lengths = np.array(ast.literal_eval(row["output_token_lengths"]), dtype=np.float32)
+                if len(lengths) == 0:
+                    continue
 
-    prompt_id = row["prompt_id"]
-    prompt = row["prompt_text"]
+                mean_length, std_length = float(np.mean(lengths)), float(np.std(lengths))
 
-    # out_put_token 是字符串，需要转换为list
-    output_tokens = ast.literal_eval(row["output_token_lengths"])
+                sample = {
+                    "prompt_id": row["prompt_id"],
+                    "prompt_text": row["prompt_text"],
+                    "dataset_name": row.get("dataset_name", "LongBench"),
+                    "task_type": row.get("task_type", "long-sequence"),
+                    "inference_model": row["inference_model"],
+                    "output_token_lengths": lengths.astype(int).tolist(),
+                    "repeat_times": int(row["repeat_times"]),
+                    "finished": int(row["finished"]),
+                    "statistics": {
+                        "median_length": float(np.median(lengths)),
+                        "mean_length": mean_length,
+                        "p90_length": float(np.percentile(lengths, 90)),
+                        "p95_length": float(np.percentile(lengths, 95)),
+                        "max_length": float(np.max(lengths)),
+                        "min_length": float(np.min(lengths)),
+                        "std_length": std_length,
+                        "cv_length": float(std_length / mean_length) if mean_length > 0 else 0
+                    }
+                }
 
-    # 计算统计量
-    median_token = np.median(output_tokens)
-    worst_token = np.max(output_tokens)
-    std_token = np.std(output_tokens)
+                fout.write(json.dumps(sample, ensure_ascii=False) + "\n")
+                total += 1
 
-    print("=" * 80)
-    print("Index:", index)
-    print("Prompt ID:", prompt_id)
-    print("Prompt:", prompt)
+            except Exception as e:
+                skipped += 1
+                print(f"{input_csv} skip line {idx}: {e}")
 
-    print("Output Token Array:")
-    print(output_tokens)
+    print(f"{input_csv}: processed={total}, skipped={skipped}")
 
-    print("Statistics:")
-    print("Median:", median_token)
-    print("Worst:", worst_token)
-    print("STD:", std_token)
+
+if __name__ == "__main__":
+    # 如果之前存在旧文件，先删除，避免重复追加
+    # if os.path.exists(OUTPUT_JSONL):
+    #     os.remove(OUTPUT_JSONL)
+
+    for csv_file in CSV_FILES:
+        process_csv_to_jsonl(csv_file, OUTPUT_JSONL)
+
+    print(f"All finished, saved to {OUTPUT_JSONL}")
+
