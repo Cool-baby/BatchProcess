@@ -15,15 +15,16 @@ import logging
 
 # 模型名称及本地路径
 # MODEL_INFO = {"model_name": "Qwen2.5-3B-Instruct", "model_path": "/home/hao/Workspace/models/qwen/Qwen2.5-3B-Instruct" }
-MODEL_INFO = {"model_name": "Llama-3.2-3B-Instruct", "model_path": "/home/hao/Workspace/models/meta-llama/Llama-3.2-3B-Instruct" }
+# MODEL_INFO = {"model_name": "Llama-3.2-3B-Instruct", "model_path": "/home/hao/Workspace/models/meta-llama/Llama-3.2-3B-Instruct" }
+MODEL_INFO = {"model_name": "Gemma-3-4b-Instruct", "model_path": "/home/hao/Workspace/models/google/gemma-3-4b-it" }
 # MODEL_INFO = {"model_name": "Deepseek-R1-1.5B", "model_path": "/home/hao/Workspace/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B" }
 # MODEL_INFO = {"model_name": "Qwen2.5-7B", "model_path": "/home/hao/Workspace/models/qwen/Qwen2.5-7B-Instruct" }
 # MODEL_INFO = {"model_name": "Llama3-8B", "model_path": "/home/hao/Workspace/models/meta-llama/Meta-Llama-3-8B-Instruct" }
 
 # 数据集名称、路径、类型
-# DATASET_INFO = {"dataset_name": "WildChat", "full_name": "allenai/WildChat", "path": "/home/hao/Workspace/datasets/WildChat", "type": "chat"}
+DATASET_INFO = {"dataset_name": "WildChat", "full_name": "allenai/WildChat", "path": "/home/hao/Workspace/datasets/WildChat", "type": "chat"}
 # DATASET_INFO = {"dataset_name": "GSM8K", "full_name": "openai/gsm8k", "path": "/home/hao/Workspace/datasets/gsm8k", "type": "math"}
-DATASET_INFO = {"dataset_name": "MBPP", "full_name": "google-research/mbpp", "path": "/home/hao/Workspace/datasets/mbpp", "type": "coding"}
+# DATASET_INFO = {"dataset_name": "MBPP", "full_name": "google-research/mbpp", "path": "/home/hao/Workspace/datasets/mbpp", "type": "coding"}
 # DATASET_INFO = {"dataset_name": "LongBench", "full_name": "zai-org/LongBench", "path": "/home/hao/Workspace/datasets/LongBench", "type": "long sequence"}
 
 # 数据保存路径
