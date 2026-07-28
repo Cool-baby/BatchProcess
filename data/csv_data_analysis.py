@@ -13,11 +13,18 @@ import numpy as np
 import os
 
 CSV_FILES = [
+    "./raw/results-Llama-3.2-3B-Instruct-GSM8K.csv",
+    "./raw/results-Qwen2.5-3B-Instruct-GSM8K.csv",
+    "./raw/results-Gemma-3-4b-Instruct-GSM8K.csv",
+
     # "./raw/results-Llama-3.2-3B-Instruct-WildChat.csv",
-    # "./raw/results-Llama-3.2-3B-Instruct-WildChat (new).csv",
+    # "./raw/results-Llama-3.2-3B-Instruct-WildChat-2.csv",
     # "./raw/results-Qwen2.5-3B-Instruct-WildChat.csv",
-    # "./raw/results-Llama-3.2-3B-Instruct-GSM8K.csv",
-    # "./raw/results-Qwen2.5-3B-Instruct-GSM8K.csv",
+    # "./raw/results-Qwen2.5-3B-Instruct-WildChat-2.csv",
+    # "./raw/results-Gemma-3-4b-Instruct-WildChat.csv",
+
+    # "./raw/results-Gemma-3-4b-Instruct-LongBench.csv",
+    # "./raw/results-Gemma-3-4b-Instruct-LongBench(qasper).csv",
     # "./raw/results-Llama-3.2-3B-Instruct-LongBench.csv",
     # "./raw/results-Llama-3.2-3B-Instruct-LongBench(qasper).csv",
     # "./raw/results-Qwen2.5-3B-Instruct-LongBench.csv",
@@ -42,8 +49,8 @@ def process_csv_to_jsonl(input_csv, output_jsonl):
                 sample = {
                     "prompt_id": row["prompt_id"],
                     "prompt_text": row["prompt_text"],
-                    "dataset_name": row.get("dataset_name", "LongBench"),
-                    "task_type": row.get("task_type", "long-sequence"),
+                    "dataset_name": row.get("dataset_name", "GSM8K"),
+                    "task_type": row.get("task_type", "math"),
                     "inference_model": row["inference_model"],
                     "output_token_lengths": lengths.astype(int).tolist(),
                     "repeat_times": int(row["repeat_times"]),
