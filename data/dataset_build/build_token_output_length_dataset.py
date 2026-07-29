@@ -28,7 +28,7 @@ DATASET_INFO = {"dataset_name": "WildChat", "full_name": "allenai/WildChat", "pa
 # DATASET_INFO = {"dataset_name": "LongBench", "full_name": "zai-org/LongBench", "path": "/home/hao/Workspace/datasets/LongBench", "type": "long sequence"}
 
 # 数据保存路径
-SAVE_DIR = "./output"
+SAVE_DIR = "output"
 CSV_PATH = f"{SAVE_DIR}/{MODEL_INFO['model_name']}/results-{MODEL_INFO['model_name']}-{DATASET_INFO['dataset_name']}.csv"
 
 # 检查目录是否存在，如果不存在，则创建它
@@ -69,7 +69,7 @@ MIN_TOKEN_DELTA = 3  # 至少允许3token
 # 推理设备
 if not torch.cuda.is_available():
     logging.info("No GPU found, using CPU")
-    raise Exception("CUDA not available")
+    # raise Exception("CUDA not available")
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # 加载tokenizer

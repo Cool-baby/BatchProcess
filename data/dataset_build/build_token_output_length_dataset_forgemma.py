@@ -20,7 +20,7 @@ MODEL_INFO = {"model_name": "Gemma-3-4b-Instruct", "model_path": "/home/hao/Work
 DATASET_INFO = {"dataset_name": "WildChat", "full_name": "allenai/WildChat", "path": "/home/hao/Workspace/datasets/WildChat", "type": "chat"}
 
 # 数据保存路径
-SAVE_DIR = "./output"
+SAVE_DIR = "output"
 CSV_PATH = f"{SAVE_DIR}/{MODEL_INFO['model_name']}/results-{MODEL_INFO['model_name']}-{DATASET_INFO['dataset_name']}.csv"
 
 # 检查目录是否存在，如果不存在，则创建它
