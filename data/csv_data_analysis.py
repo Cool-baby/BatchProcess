@@ -13,9 +13,9 @@ import numpy as np
 import os
 
 CSV_FILES = [
-    "./raw/results-Llama-3.2-3B-Instruct-GSM8K.csv",
-    "./raw/results-Qwen2.5-3B-Instruct-GSM8K.csv",
-    "./raw/results-Gemma-3-4b-Instruct-GSM8K.csv",
+    # "./raw/results-Llama-3.2-3B-Instruct-GSM8K.csv",
+    # "./raw/results-Qwen2.5-3B-Instruct-GSM8K.csv",
+    # "./raw/results-Gemma-3-4b-Instruct-GSM8K.csv",
 
     # "./raw/results-Llama-3.2-3B-Instruct-WildChat.csv",
     # "./raw/results-Llama-3.2-3B-Instruct-WildChat-2.csv",
@@ -28,10 +28,22 @@ CSV_FILES = [
     # "./raw/results-Llama-3.2-3B-Instruct-LongBench.csv",
     # "./raw/results-Llama-3.2-3B-Instruct-LongBench(qasper).csv",
     # "./raw/results-Qwen2.5-3B-Instruct-LongBench.csv",
+
+    # "./raw/test/results-Llama-3.2-3B-Instruct-WildChat.csv",
+    # "./raw/test/results-Gemma-3-4b-Instruct-WildChat.csv",
+    # "./raw/test/results-Qwen2.5-3B-Instruct-WildChat.csv",
+
+    # "./raw/test/results-Gemma-3-4b-Instruct-GSM8K.csv",
+    # "./raw/test/results-Llama-3.2-3B-Instruct-GSM8K.csv",
+    # "./raw/test/results-Qwen2.5-3B-Instruct-GSM8K.csv",
+
+    "./raw/test/results-Gemma-3-4b-Instruct-LongBench.csv",
+    "./raw/test/results-Llama-3.2-3B-Instruct-LongBench.csv",
+    "./raw/test/results-Qwen2.5-3B-Instruct-LongBench.csv",
 ]
 
 
-OUTPUT_JSONL = "token_length_dataset.jsonl"
+OUTPUT_JSONL = "token_length_dataset_test.jsonl"
 
 
 def process_csv_to_jsonl(input_csv, output_jsonl):
@@ -49,8 +61,8 @@ def process_csv_to_jsonl(input_csv, output_jsonl):
                 sample = {
                     "prompt_id": row["prompt_id"],
                     "prompt_text": row["prompt_text"],
-                    "dataset_name": row.get("dataset_name", "GSM8K"),
-                    "task_type": row.get("task_type", "math"),
+                    "dataset_name": row.get("dataset_name", "LongBench"),
+                    "task_type": row.get("task_type", "long-sequence"),
                     "inference_model": row["inference_model"],
                     "output_token_lengths": lengths.astype(int).tolist(),
                     "repeat_times": int(row["repeat_times"]),
