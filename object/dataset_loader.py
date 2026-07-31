@@ -12,13 +12,49 @@ from datasets import load_dataset
 from object.prompt import Prompt
 
 
-def extract_prompt(selected_datas):
+def truncate_context_by_tokens(context_text, input_text, tokenizer, max_prompt_length=2048):
+    """
+    根据 Token 数量精准截断 Context，确保为 Input 留出足够空间
+    :param max_prompt_length: 允许输入给模型的最大 Input Token 数（例如模型窗口是 8k，建议设为 7k 留出安全边际）
+    """
+    input_tokens = tokenizer.encode(input_text, add_special_tokens=False)
+    # 扣除 input 占用的 token，再扣除 50 个 token 给 "Context:\n" 等模板文字留空间
+    max_context_tokens = max_prompt_length - len(input_tokens) - 50
+
+    if max_context_tokens <= 0:
+        # 极少情况：input 本身就超长了，做基础安全兜底
+        return context_text[:1000]
+
+    context_tokens = tokenizer.encode(context_text, add_special_tokens=False)
+
+    # 如果 Context 没有超出限制，直接返回
+    if len(context_tokens) <= max_context_tokens:
+        return context_text
+
+    # 超长处理：采用“头尾保留法”(保留前 50% 和后 50% 的可用 token)
+    half = max_context_tokens // 2
+    head_tokens = context_tokens[:half]
+    tail_tokens = context_tokens[-half:]
+
+    # 解码回文本，并在中间插入省略提示
+    truncated_context = (
+            tokenizer.decode(head_tokens, skip_special_tokens=True)
+            + "\n\n[... Context truncated due to length limits ...]\n\n"
+            + tokenizer.decode(tail_tokens, skip_special_tokens=True)
+    )
+    return truncated_context
+
+
+def extract_prompt(selected_datas, tokenizer=None, max_prompt_length=2048):
     """
     从选取的数据集中提出prompt
     :param selected_datas: 从数据集中选取的数据
+    :param tokenizer: tokenizer
+    :param max_prompt_length: prompt最大长度限制
     :return: prompt数组
     """
     prompts = []
+    prompt_id = None
 
     for sample in selected_datas:
         if "conversation" in sample:
@@ -29,14 +65,23 @@ def extract_prompt(selected_datas):
             prompt = sample["question"]
         elif "prompt" in sample:  # 适配MBPP数据集
             prompt = sample["prompt"]
-        elif "context" in sample:   # 适配LongBench数据集
-            prompt = sample["context"]
+        elif "context" in sample and "input" in sample:  # LongBench 等长文本数据集
+            context_text = sample["context"].strip()
+            input_text = sample["input"].strip()
+            prompt_id = hashlib.sha256(context_text.encode()).hexdigest()[:16]  # 这样确保相同的LongBench的ID是一致的
+
+            if not input_text:
+                prompt = context_text
+            else:
+                context_text = truncate_context_by_tokens(context_text, input_text, tokenizer, max_prompt_length)
+                prompt = f"Context:\n<context>\n{context_text}\n</context>\n\nQuestion:\n{input_text}"  # 通用结构化拼接
         else:
             continue
 
         prompt = prompt.strip()
         # 获取一个唯一ID
-        prompt_id = hashlib.sha256(prompt.encode()).hexdigest()[:16]
+        if prompt_id is None:
+            prompt_id = hashlib.sha256(prompt.encode()).hexdigest()[:16]
         # 创建Prompt对象并加入列表
         prompts.append(Prompt(prompt_id, prompt))
 
@@ -66,7 +111,7 @@ class DatasetLoader:
             elif self.dataset_name == "google-research/mbpp":
                 self.dataset = load_dataset("json", data_files=f"{self.dataset_local_path}/sanitized-mbpp.json", split=split_way)
             elif self.dataset_name == "zai-org/LongBench":
-                self.dataset = load_dataset("json", data_files=f"{self.dataset_local_path}/data/multi_news.jsonl", split=split_way)
+                self.dataset = load_dataset("json", data_files=f"{self.dataset_local_path}/data/LongBench_test.jsonl", split=split_way)
                 # self.dataset = load_dataset("json", data_files=f"{self.dataset_local_path}/data/2wikimqa.jsonl", split=split_way)
                 # self.dataset = load_dataset("json", data_files=f"{self.dataset_local_path}/data/qasper.jsonl", split=split_way)
             else:

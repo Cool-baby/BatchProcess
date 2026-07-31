@@ -93,7 +93,7 @@ logging.info(model.hf_device_map)
 logging.info(f"Loading dataset - {DATASET_INFO['dataset_name']}")
 dataset = DatasetLoader(DATASET_INFO['full_name'], DATASET_INFO['path'], DATASET_INFO['type'])
 samples = dataset.extract_data(SEED, NUM_PROMPTS)
-prompts = extract_prompt(samples)
+prompts = extract_prompt(samples, tokenizer, MAX_INPUT_TOKENS)
 
 # 当前要运行的batch
 active_batch = []
