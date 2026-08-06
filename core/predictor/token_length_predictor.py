@@ -9,7 +9,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from typing import List, Dict, Union
+from typing import List, Dict
 from transformers import AutoModel, AutoTokenizer
 from peft import get_peft_model, LoraConfig, TaskType
 
@@ -28,12 +28,21 @@ class _LLMLengthPredictorNet(nn.Module):
             self.backbone = get_peft_model(self.backbone, peft_config)
 
         hidden_size = self.backbone.config.hidden_size
-        self.median_head = nn.Linear(hidden_size, 1, dtype=torch.bfloat16)
-        self.p95_offset_head = nn.Sequential(
+
+        # Median 升级为独立的 MLP
+        self.median_head = nn.Sequential(
             nn.Linear(hidden_size, hidden_size // 2, dtype=torch.bfloat16),
             nn.GELU(),
-            nn.Linear(hidden_size // 2, 1, dtype=torch.bfloat16),
-            nn.Softplus()
+            nn.Dropout(0.1),
+            nn.Linear(hidden_size // 2, 1, dtype=torch.bfloat16)
+        )
+
+        # P95 修改为同构的独立 MLP
+        self.p95_head = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size // 2, dtype=torch.bfloat16),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            nn.Linear(hidden_size // 2, 1, dtype=torch.bfloat16)
         )
 
     def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor):
@@ -49,14 +58,14 @@ class _LLMLengthPredictorNet(nn.Module):
             sequence_lengths
         ]
 
+        # 【修改点 3】：两个头完全独立预测
         median_pred = self.median_head(last_token_hidden_states)
-        p95_offset = self.p95_offset_head(last_token_hidden_states)
-        p95_pred = median_pred + p95_offset
+        p95_pred = self.p95_head(last_token_hidden_states)
 
         return torch.cat([median_pred, p95_pred], dim=-1)
 
 
-# 面向外部调用的预测器类
+# 2. 面向外部调用的预测器类
 class TokenLengthPredictor:
     def __init__(
             self,
@@ -87,7 +96,7 @@ class TokenLengthPredictor:
         # 2. 构建模型并加载训练权重
         peft_config = LoraConfig(
             task_type=TaskType.FEATURE_EXTRACTION,
-            inference_mode=False,
+            inference_mode=True,
             r=16,
             lora_alpha=32,
             lora_dropout=0.1,
@@ -122,8 +131,6 @@ class TokenLengthPredictor:
 
         if self.tokenizer.eos_token_id is not None:
             final_tokens.append(self.tokenizer.eos_token_id)
-
-        # print(self.tokenizer.decode(final_tokens, skip_special_tokens=False))
 
         return final_tokens
 
@@ -170,11 +177,17 @@ class TokenLengthPredictor:
                 p95s = torch.expm1(outputs[:, 1].float()).cpu().numpy()
 
                 for m, p in zip(medians, p95s):
-                    p = max(m * 1.1, p)  # 防止出现P95小于Media的情况
-                    print(f"ERROR: P95 < Media, P95: {p}, Median: {m}")
+                    # 【修改点 4】：强化后处理约束。由于长尾分布特性，P95理应比Median大一定比例。
+                    # 直接强制 P95 >= Median * 1.1，而不仅仅是防止 P95 < Median
+                    adjusted_p = max(m * 1.1, p)
+
+                    # 仅在调试时可以保留此打印，如果批量大建议注释掉以免刷屏
+                    if adjusted_p != p:
+                        pass  # print(f"WARNING: P95 Constrained. Original: {p:.1f}, Median: {m:.1f}, Adjusted: {adjusted_p:.1f}")
+
                     results.append({
                         "median_length": float(np.round(m, 1)),
-                        "p95_length": float(np.round(p, 1))
+                        "p95_length": float(np.round(adjusted_p, 1))
                     })
 
         return results
@@ -192,4 +205,4 @@ if __name__ == "__main__":
     # inference_mode1 = "Llama-3.2-3B-Instruct"
     inference_mode1 = "Qwen2.5-3B-Instruct"
     res = predictor.predict_one(prompt1, inference_mode1)
-    print(res)
+    print(f"Result: {res}, median: {res['median_length']}, p95: {res['p95_length']}")

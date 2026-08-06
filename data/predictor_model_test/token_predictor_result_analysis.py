@@ -100,7 +100,7 @@ def aggregate_mean_std(df_list, index_names):
 
 
 def main():
-    folder_path = "./model_0731"
+    folder_path = "./STABS_prod_model"
     file_pattern = os.path.join(folder_path, "predictions_detail_run*.csv")
     file_list = glob.glob(file_pattern)
 
@@ -160,7 +160,7 @@ def main():
     final_dim3 = aggregate_mean_std(dim3_results, index_names=['inference_model', 'prompt_type'])
     print(final_dim3.to_string())
 
-    output_report_path = os.path.join(folder_path, "summary_analysis_report_0731_p95.csv")
+    output_report_path = os.path.join(folder_path, "summary_analysis_report_0806_p95.csv")
     final_dim3.to_csv(output_report_path)
     print(f"\n" + "=" * 80)
     print(f"聚合分析结果 (Mean ± Std) 已成功导出至文件: {output_report_path}")
