@@ -6,20 +6,20 @@
 @Date    ：2026/5/7 11:24 
 @Describe：Task对象
 """
-import random
 from core.scheduler.computation_density import task_density
 
 
 class Task:
-    def __init__(self, task_id, task_type, prompt):
+    def __init__(self, task_id, dataset_name, task_type, prompt):
         """
         推理任务
         :param task_id: 任务ID
+        :param dataset_name: 来源数据集
         :param task_type: 任务类型
-        :param prompt: 任务输入的提示词
-        :param prompt_token: tokenizer之后的prompt
+        :param prompt: prompt文本
         """
         self.task_id = task_id
+        self.task_from_dataset = dataset_name
         self.task_type = task_type
         self.prompt = prompt
         # 任务输入token长度
@@ -30,8 +30,8 @@ class Task:
         self.output = None
         # 任务实际输出长度
         self.output_length = 0
-        # 任务预估输出长度
-        self.predicted_output_length = 0
+        # 任务预估输出长度{median_length, p95_length}
+        self.predicted_output_length = None
         # 任务所需GPU计算资源
         self.comp_cost = 0
         # 任务所需GPU内存资源
@@ -52,21 +52,11 @@ class Task:
 
         return density
 
-
-    def predicted_output(self):
-        """
-        预测输出长度
-        :return:
-        """
-        # TODO 增加模型输出长度预测功能
-        self.predicted_output_length = random.randint(64, 256)
-
-
     def print_task(self):
         """
         打印当前任务
         """
-        print(f"Task ID: {self.task_id}, Task Type: {self.task_type}, Prompt: {self.prompt}, Response:{self.response}, "
+        print(f"Task ID: {self.task_id}, Task Type: {self.task_type}, Prompt: {self.prompt}, Response:{self.output}, "
               f"input length: {self.input_length}, output length:{self.output_length}, predicted output length: {self.predicted_output_length}, "
               f"computation density: {self.comp_density}")
 
@@ -103,27 +93,14 @@ class Task:
         }
 
 
-def generate_task_by_prompt(dataset_name, dataset_type, idx, single_data):
+def generate_task_by_prompt(idx, dataset_name, dataset_type, prompt_text):
     """
     基于数据集中的单个数据生成一个任务对象
+    :param idx: 任务序号
     :param dataset_name: 数据集名称
     :param dataset_type: 任务类型
-    :param idx: 任务序号
-    :param single_data: 数据集中的单个数据
+    :param prompt_text: prompt文本
     :return: Task Object
     """
-    # 如果是WildChat对话
-    if dataset_name == "allenai/WildChat":
-        # 提取此对话prompt
-        conversation = single_data["conversation"]
-        if len(conversation) == 0:
-            return None
-        prompt = conversation[0]["content"]
 
-        # 空prompt过滤
-        if prompt is None or len(prompt.strip()) == 0:
-            return None
-    else:
-        raise Exception(f"Dataset {dataset_name} not implemented")
-
-    return Task(idx, dataset_type, prompt)
+    return Task(idx, dataset_name, dataset_type, prompt_text)

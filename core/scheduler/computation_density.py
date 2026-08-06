@@ -7,6 +7,7 @@
 @Describe：计算密度，包含计算密集型和内存密集型计算方法
 """
 LAMBDA = 4  # 内存密集型任务超参数
+GAMMA = 0.5  # 计算密度风险调整参数，调控Med预测和P95预测权重
 
 
 def comp_density(m_param, input_length, predicted_output_length, h, l, f_ser):
@@ -36,7 +37,11 @@ def task_density(m_param, l, h, h_kv, input_length, predicted_output_length, f_s
     :param bandwidth: GPU 的内存带宽
     :return: 计算密度
     """
-    comp_dens = comp_density(m_param, input_length, predicted_output_length, h, l, f_ser)
-    mem_dens = mem_density(l, h_kv, input_length, predicted_output_length, bandwidth)
+    # 计算以Median为基准的计算密度和内存密度
+    comp_dens_med = comp_density(m_param, input_length, predicted_output_length['median_length'], h, l, f_ser)
+    mem_dens_med = mem_density(l, h_kv, input_length, predicted_output_length['median_length'], bandwidth)
+    # 计算以P95为基准的计算密度和内存密度
+    comp_dens_p95 = comp_density(m_param, input_length, predicted_output_length['p95_length'], h, l, f_ser)
+    mem_dens_p95 = mem_density(l, h_kv, input_length, predicted_output_length['p95_length'], bandwidth)
 
-    return comp_dens / mem_dens
+    return (1 - GAMMA) * comp_dens_med / mem_dens_med + GAMMA * comp_dens_p95 / mem_dens_p95

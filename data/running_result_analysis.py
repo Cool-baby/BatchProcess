@@ -34,7 +34,7 @@ def analysis_tasks_result(all_tasks):
             total_truncated_task += 1
         total_output_length += task.output_length
         total_time_cost += task.runtime_latency
-        total_diff_predict_actual_output += abs(task.output_length - task.predicted_output_length)
+        total_diff_predict_actual_output += abs(task.output_length - task.predicted_output_length['median_length'])
 
 
     print(f"Total tasks: {total_tasks}, total runtime: {total_time_cost}, total output length: {total_output_length}, "
