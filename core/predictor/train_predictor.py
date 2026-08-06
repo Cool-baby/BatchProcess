@@ -14,13 +14,12 @@ import torch.nn as nn
 import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
-from transformers import AutoModel, AutoTokenizer, PreTrainedModel, Trainer, TrainingArguments
+from transformers import AutoModel, AutoTokenizer, Trainer, TrainingArguments
 from peft import get_peft_model, LoraConfig, TaskType
+import functools
 
 
-# ==========================================
 # 1. 模型架构定义 (Backbone + 自定义回归头)
-# ==========================================
 class LLMLengthPredictor(nn.Module):
     def __init__(self, model_name_or_path, peft_config=None):
         super().__init__()
@@ -35,22 +34,28 @@ class LLMLengthPredictor(nn.Module):
             self.backbone = get_peft_model(self.backbone, peft_config)
 
         hidden_size = self.backbone.config.hidden_size
-        self.median_head = nn.Linear(hidden_size, 1, dtype=torch.bfloat16)
-        self.p95_offset_head = nn.Sequential(
+
+        # 增加网络深度，让 Median 头具备更强拟合能力
+        self.median_head = nn.Sequential(
             nn.Linear(hidden_size, hidden_size // 2, dtype=torch.bfloat16),
             nn.GELU(),
-            nn.Linear(hidden_size // 2, 1, dtype=torch.bfloat16),
-            nn.Softplus()
+            nn.Dropout(0.1),
+            nn.Linear(hidden_size // 2, 1, dtype=torch.bfloat16)
         )
 
-    # 【新增关键方法】解决 Hugging Face Trainer 找不到 gradient_checkpointing_enable 的报错
+        # P95 需要拟合更复杂的长尾边界，同样给予完整的 MLP 结构
+        self.p95_head = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size // 2, dtype=torch.bfloat16),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            nn.Linear(hidden_size // 2, 1, dtype=torch.bfloat16)
+        )
+
     def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs=None):
         if hasattr(self.backbone, "gradient_checkpointing_enable"):
             if gradient_checkpointing_kwargs is None:
                 gradient_checkpointing_kwargs = {}
-            self.backbone.gradient_checkpointing_enable(
-                gradient_checkpointing_kwargs=gradient_checkpointing_kwargs
-            )
+            self.backbone.gradient_checkpointing_enable(gradient_checkpointing_kwargs=gradient_checkpointing_kwargs)
 
     def forward(self, input_ids, attention_mask, labels=None):
         outputs = self.backbone(
@@ -66,28 +71,32 @@ class LLMLengthPredictor(nn.Module):
             sequence_lengths
         ]
 
+        # 两个头独立预测，自然输出。如果推理时 P95 < Median，可以做后处理 clamp，但在训练时让它们自由拟合。
         median_pred = self.median_head(last_token_hidden_states)
-        p95_offset = self.p95_offset_head(last_token_hidden_states)
-        p95_pred = median_pred + p95_offset
+        p95_pred = self.p95_head(last_token_hidden_states)
 
         return torch.cat([median_pred, p95_pred], dim=-1)
 
 
-# ==========================================
 # 2. 自定义 Trainer 与 Pinball Loss
-# ==========================================
-def quantile_loss(preds, targets, quantiles=[0.5, 0.95]):
+def quantile_loss(preds, targets, quantiles=[0.5, 0.95], p95_weight_scale=2.0):
     """
-    计算分位数损失 (Pinball Loss)
+    标准的严格分位数损失 (Strict Pinball Loss)
     preds: [batch_size, 2]
     targets: [batch_size, 2]
     """
     loss = 0.0
+    # 为不同分位数分配全局重要性权重，强迫模型关注 P95
+    global_weights = [1.0, p95_weight_scale]
+
     for i, q in enumerate(quantiles):
         error = targets[:, i] - preds[:, i]
-        # Pinball Loss 公式
-        q_loss = torch.max(q * error, (q - 1) * error)
-        loss += q_loss.mean()
+
+        # 标准 Pinball Loss 公式 max(q * error, (q-1) * error)
+        q_loss = torch.where(error > 0, q * error, (q - 1) * error)
+
+        loss += (global_weights[i] * q_loss).mean()
+
     return loss
 
 
@@ -104,9 +113,7 @@ class QuantileRegressionTrainer(Trainer):
         return (loss, preds) if return_outputs else loss
 
 
-# ==========================================
 # 3. 数据集与预处理 (头尾保留截断策略)
-# ==========================================
 class PromptLengthDataset(Dataset):
     def __init__(self, df, tokenizer, max_length=2048):
         self.df = df
@@ -203,14 +210,11 @@ def load_dataset_from_jsonl(file_path, tokenizer, max_length):
     return PromptLengthDataset(df, tokenizer, max_length)
 
 
-# ==========================================
 # 4. 主执行流程
-# ==========================================
 def main():
     # 参数设置
     MODEL_PATH = "/HOME/scw6e0x/run/zzhao/models/Qwen2.5-1.5B"  # 本地模型文件夹路径
-    MAX_LENGTH = 2048
-    BATCH_SIZE = 16
+    MAX_LENGTH = 2148
     EPOCHS = 3
 
     # 数据集路径
@@ -277,12 +281,15 @@ def main():
         dataloader_num_workers=2,  # 多进程加载数据提升速度
     )
 
+    # 动态绑定正确的 pad_token_id
+    custom_collate_fn = functools.partial(collate_fn, pad_token_id=tokenizer.pad_token_id)
+
     trainer = QuantileRegressionTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        data_collator=collate_fn,
+        data_collator=custom_collate_fn,
     )
 
     print("5. 开始全量训练...")
@@ -292,12 +299,11 @@ def main():
     output_dir = "./length_predictor_outputs"
     os.makedirs(output_dir, exist_ok=True)  # exist_ok=True 保证文件夹已存在时不报错
 
-    save_path = os.path.join(output_dir, "final_model_0729.pt")
+    save_path = os.path.join(output_dir, "STABS_prod_model_0806.pt")
 
     print(f"6. 正在保存权重到: {save_path} ...")
     torch.save(model.state_dict(), save_path)
     print(f"训练完成！全量训练模型已成功保存至: {save_path}")
-
 
 
 if __name__ == "__main__":

@@ -15,9 +15,8 @@ import pandas as pd
 import numpy as np
 from core.predictor.token_length_predictor import TokenLengthPredictor
 
-# ==========================================
+
 # 1. 日志与输出目录配置
-# ==========================================
 OUTPUT_DIR = "./evaluation_results"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -36,9 +35,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ==========================================
-# 2. 健壮的数据加载函数
-# ==========================================
+# 2. 数据加载函数
 def load_dataset_from_jsonl(filepath: str) -> pd.DataFrame:
     """安全读取 JSONL 文件，容忍多行换行与格式异常"""
     if not os.path.exists(filepath):
@@ -72,9 +69,7 @@ def load_dataset_from_jsonl(filepath: str) -> pd.DataFrame:
     return df
 
 
-# ==========================================
 # 3. 评估指标计算辅助函数
-# ==========================================
 def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray, prefix: str) -> dict:
     """计算单个维度的 MAE, RMSE, MAPE 和 R2Score"""
     mae = np.mean(np.abs(y_pred - y_true))
@@ -94,128 +89,130 @@ def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray, prefix: str) -> di
     }
 
 
-# ==========================================
 # 4. 主流程
-# ==========================================
 def main():
     # 路径配置
-    LOCAL_MODEL_PATH = "/Users/hao/Workspace/Other/models/Qwen2.5-1.5B"
-    # LOCAL_MODEL_PATH = "/HOME/scw6e0x/run/zzhao/models/Qwen2.5-1.5B"
-    CHECKPOINT_PATH = "./final_model_0729.pt"
+    LOCAL_MODEL_PATH = "/HOME/scw6e0x/run/zzhao/models/Qwen2.5-1.5B"
+    CHECKPOINT_PATH = "./final_model_0731.pt"
     TEST_JSONL_PATH = "../../data/MoLD_shuffled_test.jsonl"
+
+    # 运行次数配置
+    NUM_RUNS = 1
+    BATCH_SIZE = 16
 
     logger.info("================ 程序启动 ================")
     logger.info(f"基础模型路径: {LOCAL_MODEL_PATH}")
     logger.info(f"模型权重路径: {CHECKPOINT_PATH}")
     logger.info(f"测试集路径  : {TEST_JSONL_PATH}")
+    logger.info(f"计划测试次数: {NUM_RUNS}")
 
-    # 1. 初始化预测器
-    logger.info("Step 1/6: 正在初始化预测模型...")
+    # 1. 初始化预测器 (在循环外初始化，避免重复加载模型极大地浪费时间)
+    logger.info("Step 1: 正在初始化预测模型...")
     start_time = time.time()
     try:
         predictor = TokenLengthPredictor(
             base_model_path=LOCAL_MODEL_PATH,
             checkpoint_path=CHECKPOINT_PATH,
-            max_length=2048
+            max_length=2548
         )
         logger.info(f"模型加载完成，耗时: {time.time() - start_time:.2f} 秒")
     except Exception as e:
         logger.error(f"模型初始化失败!", exc_info=True)
         return
 
-    # 2. 加载数据集
-    logger.info("Step 2/6: 正在解析测试数据集...")
-    df_test = load_dataset_from_jsonl(TEST_JSONL_PATH)
+    # 2. 加载数据集 (在循环外统一加载和预处理，提高效率)
+    logger.info("Step 2: 正在解析测试数据集...")
+    df_test_origin = load_dataset_from_jsonl(TEST_JSONL_PATH)
 
     # 提取真实值
-    df_test['real_median'] = df_test['statistics'].apply(
+    df_test_origin['real_median'] = df_test_origin['statistics'].apply(
         lambda x: x.get('median_length', 0) if isinstance(x, dict) else 0)
-    df_test['real_p95'] = df_test['statistics'].apply(lambda x: x.get('p95_length', 0) if isinstance(x, dict) else 0)
+    df_test_origin['real_p95'] = df_test_origin['statistics'].apply(
+        lambda x: x.get('p95_length', 0) if isinstance(x, dict) else 0)
 
     # 3. 组装输入格式
-    logger.info("Step 3/6: 构造推理 Payload...")
+    logger.info("Step 3: 构造推理 Payload...")
     eval_items = [
         {
             "prompt_text": row["prompt_text"],
             "inference_model": row["inference_model"]
         }
-        for _, row in df_test.iterrows()
+        for _, row in df_test_origin.iterrows()
     ]
 
-    # 4. 执行模型批量预测
-    BATCH_SIZE = 16
-    logger.info(f"Step 4/6: 开始模型批量推理 (Batch Size: {BATCH_SIZE})...")
-    infer_start_time = time.time()
+    logger.info(f"准备工作完毕，开始执行 {NUM_RUNS} 轮模型推理...")
 
-    try:
-        predictions = predictor.predict_batch(eval_items, batch_size=BATCH_SIZE)
-    except Exception as e:
-        logger.error("批量预测出现未捕获的异常!", exc_info=True)
-        return
+    # 4. 循环推理及指标收集 (=== 优化点2：核心循环 ===)
+    for run_idx in range(1, NUM_RUNS + 1):
+        logger.info(f"\n" + "=" * 15 + f" 第 {run_idx}/{NUM_RUNS} 轮推理开始 " + "=" * 15)
 
-    infer_cost = time.time() - infer_start_time
-    qps = len(df_test) / infer_cost
-    logger.info(f"推理完成！数据总量: {len(df_test)} 条, 总耗时: {infer_cost:.2f} 秒, 吞吐量: {qps:.2f} 条/秒")
+        # 使用数据的拷贝隔离各次循环产生的数据列
+        df_test = df_test_origin.copy()
 
-    # 5. 写回预测值并计算误差
-    logger.info("Step 5/6: 整理数据与误差指标...")
-    df_test['pred_median'] = [p['median_length'] for p in predictions]
-    df_test['pred_p95'] = [p['p95_length'] for p in predictions]
+        # 执行模型批量预测
+        infer_start_time = time.time()
+        try:
+            predictions = predictor.predict_batch(eval_items, batch_size=BATCH_SIZE)
+        except Exception as e:
+            logger.error(f"第 {run_idx} 轮批量预测出现未捕获的异常!", exc_info=True)
+            continue
 
-    # 详细点对点误差计算 (方便分析 Bad Case)
-    df_test['abs_err_median'] = np.abs(df_test['pred_median'] - df_test['real_median'])
-    df_test['abs_err_p95'] = np.abs(df_test['pred_p95'] - df_test['real_p95'])
-    df_test['ape_median_%'] = (df_test['abs_err_median'] / (df_test['real_median'] + 1e-5)) * 100
-    df_test['ape_p95_%'] = (df_test['abs_err_p95'] / (df_test['real_p95'] + 1e-5)) * 100
+        infer_cost = time.time() - infer_start_time
+        qps = len(df_test) / infer_cost
+        logger.info(f"推理完成！数据总量: {len(df_test)} 条, 耗时: {infer_cost:.2f} 秒, 吞吐量: {qps:.2f} 条/秒")
 
-    # 6. 计算总体指标并保存报告
-    logger.info("Step 6/6: 生成评估报告并持久化数据...")
+        # 写回预测值并计算误差
+        df_test['pred_median'] = [p.get('median_length', 0) for p in predictions]
+        df_test['pred_p95'] = [p.get('p95_length', 0) for p in predictions]
 
-    metrics_median = calculate_metrics(df_test['real_median'].values, df_test['pred_median'].values, "Median")
-    metrics_p95 = calculate_metrics(df_test['real_p95'].values, df_test['pred_p95'].values, "P95")
+        df_test['abs_err_median'] = np.abs(df_test['pred_median'] - df_test['real_median'])
+        df_test['abs_err_p95'] = np.abs(df_test['pred_p95'] - df_test['real_p95'])
+        df_test['ape_median_%'] = (df_test['abs_err_median'] / (df_test['real_median'] + 1e-5)) * 100
+        df_test['ape_p95_%'] = (df_test['abs_err_p95'] / (df_test['real_p95'] + 1e-5)) * 100
 
-    total_report = {**metrics_median, **metrics_p95}
+        # 计算总体指标
+        metrics_median = calculate_metrics(df_test['real_median'].values, df_test['pred_median'].values, "Median")
+        metrics_p95 = calculate_metrics(df_test['real_p95'].values, df_test['pred_p95'].values, "P95")
 
-    # 控制台打印评估结果
-    logger.info("\n" + "=" * 20 + " 总体评估报告 " + "=" * 20)
-    for k, v in total_report.items():
-        logger.info(f"{k:<15}: {v}")
-    logger.info("=" * 54)
+        total_report = {**metrics_median, **metrics_p95}
 
-    # 按 inference_model 分类汇总指标
-    model_group_reports = []
-    if 'inference_model' in df_test.columns:
-        for model_name, group in df_test.groupby('inference_model'):
-            m_med = calculate_metrics(group['real_median'].values, group['pred_median'].values, "Median")
-            m_p95 = calculate_metrics(group['real_p95'].values, group['pred_p95'].values, "P95")
-            model_report = {"inference_model": model_name, "sample_count": len(group), **m_med, **m_p95}
-            model_group_reports.append(model_report)
+        # 控制台简要打印评估结果
+        logger.info(
+            f"第 {run_idx} 轮总体指标: Median_MAE={total_report.get('Median_MAE')}, P95_MAE={total_report.get('P95_MAE')}")
 
-        df_model_report = pd.DataFrame(model_group_reports)
-        logger.info("\n" + "=" * 20 + " 分模型评估报告 " + "=" * 20)
-        logger.info("\n" + df_model_report.to_string(index=False))
+        # 按 inference_model 分类汇总指标
+        model_group_reports = []
+        if 'inference_model' in df_test.columns:
+            for model_name, group in df_test.groupby('inference_model'):
+                m_med = calculate_metrics(group['real_median'].values, group['pred_median'].values, "Median")
+                m_p95 = calculate_metrics(group['real_p95'].values, group['pred_p95'].values, "P95")
+                model_report = {"inference_model": model_name, "sample_count": len(group), **m_med, **m_p95}
+                model_group_reports.append(model_report)
 
-    # 7. 数据持久化导出
-    # A. 导出现场全量字段明细 (CSV)
-    details_path = os.path.join(OUTPUT_DIR, f"predictions_detail_{timestamp}.csv")
-    df_test.to_csv(details_path, index=False, encoding="utf-8-sig")
-    logger.info(f"已导出详细预测结果 (含 Error 明细): {details_path}")
+        # 5. 数据持久化导出 (=== 优化点3：每次保存不同文件名 ===)
+        run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # B. 保存指标报告 (JSON)
-    report_path = os.path.join(OUTPUT_DIR, f"metrics_report_{timestamp}.json")
-    full_json_report = {
-        "timestamp": timestamp,
-        "dataset_size": len(df_test),
-        "infer_cost_seconds": round(infer_cost, 2),
-        "qps": round(qps, 2),
-        "overall_metrics": total_report,
-        "per_model_metrics": model_group_reports
-    }
-    with open(report_path, "w", encoding="utf-8") as f:
-        json.dump(full_json_report, f, indent=2, ensure_ascii=False)
-    logger.info(f"已导出结构化评估报告: {report_path}")
+        # A. 导出现场全量字段明细 (CSV) - 文件名带上 run{idx}
+        details_path = os.path.join(OUTPUT_DIR, f"predictions_detail_run{run_idx}_{run_timestamp}.csv")
+        df_test.to_csv(details_path, index=False, encoding="utf-8-sig")
+        logger.info(f"已导出第 {run_idx} 轮详细预测结果 (CSV): {details_path}")
 
-    logger.info("================ 所有任务已顺利完成 ================\n")
+        # B. 保存指标报告 (JSON)
+        report_path = os.path.join(OUTPUT_DIR, f"metrics_report_run{run_idx}_{run_timestamp}.json")
+        full_json_report = {
+            "run_index": run_idx,
+            "timestamp": run_timestamp,
+            "dataset_size": len(df_test),
+            "infer_cost_seconds": round(infer_cost, 2),
+            "qps": round(qps, 2),
+            "overall_metrics": total_report,
+            "per_model_metrics": model_group_reports
+        }
+        with open(report_path, "w", encoding="utf-8") as f:
+            json.dump(full_json_report, f, indent=2, ensure_ascii=False)
+        logger.info(f"已导出第 {run_idx} 轮结构化评估报告 (JSON): {report_path}")
+
+    logger.info("================ 所有8轮任务已顺利完成 ================\n")
 
 
 if __name__ == "__main__":

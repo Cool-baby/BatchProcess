@@ -170,6 +170,8 @@ class TokenLengthPredictor:
                 p95s = torch.expm1(outputs[:, 1].float()).cpu().numpy()
 
                 for m, p in zip(medians, p95s):
+                    p = max(m * 1.1, p)  # 防止出现P95小于Media的情况
+                    print(f"ERROR: P95 < Media, P95: {p}, Median: {m}")
                     results.append({
                         "median_length": float(np.round(m, 1)),
                         "p95_length": float(np.round(p, 1))
@@ -181,7 +183,7 @@ class TokenLengthPredictor:
 if __name__ == "__main__":
     # 路径配置
     LOCAL_MODEL_PATH = "/Users/hao/Workspace/Other/models/Qwen2.5-1.5B"
-    CHECKPOINT_PATH = "./final_model_0729.pt"
+    CHECKPOINT_PATH = "./final_model_0731.pt"
 
     predictor = TokenLengthPredictor(base_model_path=LOCAL_MODEL_PATH, checkpoint_path=CHECKPOINT_PATH, max_length=2048)
 
