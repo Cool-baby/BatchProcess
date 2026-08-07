@@ -1,35 +1,32 @@
 # -*- coding: UTF-8 -*-
 """
 @Project ：BatchProcess 
-@File    ：csv_data_analysis.py
+@File    ：extract_data_from_csv.py
 @Author  ：Zhihao Zhang
 @Date    ：2026/5/11 18:25 
-@Describe： CSV文件数据分析
+@Describe：从csv数据文件中抽取数据，存放到指定的jsonl，用于制作数据集
 """
 import csv
 import json
 import ast
 import numpy as np
-import os
 
 CSV_FILES = [
-    # "./raw/results-Llama-3.2-3B-Instruct-GSM8K.csv",
-    # "./raw/results-Qwen2.5-3B-Instruct-GSM8K.csv",
-    # "./raw/results-Gemma-3-4b-Instruct-GSM8K.csv",
+    # "./raw/train/results-Llama-3.2-3B-Instruct-GSM8K.csv",
+    # "./raw/train/results-Qwen2.5-3B-Instruct-GSM8K.csv",
+    # "./raw/train/results-Gemma-3-4b-Instruct-GSM8K.csv",
 
-    # "./raw/results-Llama-3.2-3B-Instruct-WildChat.csv",
-    # "./raw/results-Llama-3.2-3B-Instruct-WildChat-2.csv",
-    # "./raw/results-Qwen2.5-3B-Instruct-WildChat.csv",
-    # "./raw/results-Qwen2.5-3B-Instruct-WildChat-2.csv",
-    # "./raw/results-Gemma-3-4b-Instruct-WildChat.csv",
+    # "./raw/train/results-Llama-3.2-3B-Instruct-WildChat.csv",
+    # "./raw/train/results-Llama-3.2-3B-Instruct-WildChat-2.csv",
+    # "./raw/train/results-Qwen2.5-3B-Instruct-WildChat.csv",
+    # "./raw/train/results-Qwen2.5-3B-Instruct-WildChat-2.csv",
+    # "./raw/train/results-Gemma-3-4b-Instruct-WildChat.csv",
 
-    # "./raw/results-Gemma-3-4b-Instruct-LongBench.csv",
-    # "./raw/results-Gemma-3-4b-Instruct-LongBench(qasper).csv",
-    # "./raw/results-Llama-3.2-3B-Instruct-LongBench.csv",
-    # "./raw/results-Llama-3.2-3B-Instruct-LongBench(qasper).csv",
-    # "./raw/results-Qwen2.5-3B-Instruct-LongBench.csv",
+    # "./raw/train/new_longbench/results-Gemma-3-4b-Instruct-LongBench.csv",
+    # "./raw/train/new_longbench/results-Llama-3.2-3B-Instruct-LongBench.csv",
+    # "./raw/train/new_longbench/results-Qwen2.5-3B-Instruct-LongBench.csv",
 
-    # "./raw/test/results-Llama-3.2-3B-Instruct-WildChat.csv",
+    "./raw/test/results-Llama-3.2-3B-Instruct-WildChat.csv",
     # "./raw/test/results-Gemma-3-4b-Instruct-WildChat.csv",
     # "./raw/test/results-Qwen2.5-3B-Instruct-WildChat.csv",
 
@@ -37,13 +34,10 @@ CSV_FILES = [
     # "./raw/test/results-Llama-3.2-3B-Instruct-GSM8K.csv",
     # "./raw/test/results-Qwen2.5-3B-Instruct-GSM8K.csv",
 
-    "./raw/test/results-Gemma-3-4b-Instruct-LongBench.csv",
-    "./raw/test/results-Llama-3.2-3B-Instruct-LongBench.csv",
-    "./raw/test/results-Qwen2.5-3B-Instruct-LongBench.csv",
+    # "./raw/test/new_longbench/results-Gemma-3-4b-Instruct-LongBench.csv",
+    # "./raw/test/new_longbench/results-Llama-3.2-3B-Instruct-LongBench.csv",
+    # "./raw/test/new_longbench/results-Qwen2.5-3B-Instruct-LongBench.csv",
 ]
-
-
-OUTPUT_JSONL = "token_length_dataset_test.jsonl"
 
 
 def process_csv_to_jsonl(input_csv, output_jsonl):
@@ -93,6 +87,8 @@ if __name__ == "__main__":
     # 如果之前存在旧文件，先删除，避免重复追加
     # if os.path.exists(OUTPUT_JSONL):
     #     os.remove(OUTPUT_JSONL)
+
+    OUTPUT_JSONL = "token_length_dataset_test.jsonl"
 
     for csv_file in CSV_FILES:
         process_csv_to_jsonl(csv_file, OUTPUT_JSONL)

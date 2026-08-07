@@ -16,7 +16,7 @@ from core.scheduler.bidirectional_scan_scheduler import BidirectionalScanSchedul
 from core.inference.inference_engine import InferenceEngine
 from core.graph_build.prefix_graph import build_prefix_graph
 from core.graph_build.spectral_partition import spectral_partition
-from data.running_result_analysis import analysis_tasks_result, analysis_batches_result
+from utils.running_result_analysis import analysis_tasks_result, analysis_batches_result
 from object.batch import Batch
 from object.task import generate_task_by_prompt
 from utils import save_result
