@@ -103,7 +103,7 @@ class TokenLengthPredictor:
             target_modules=["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
         )
         self.model = _LLMLengthPredictorNet(base_model_path, peft_config=peft_config)
-        self.model.load_state_dict(torch.load(checkpoint_path, map_location=self.device))
+        self.model.load_state_dict(torch.load(checkpoint_path, map_location=self.device, weights_only=True))
         self.model.to(self.device)
         self.model.eval()
 

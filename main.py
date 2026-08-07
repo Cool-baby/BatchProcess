@@ -22,32 +22,31 @@ from object.task import generate_task_by_prompt
 from utils import save_result
 
 # LLM超参数(模型名称、路径、模型总参数量、Transformer block 层数、每层隐藏维度、KV头特征维度)
-MODEL_INFO = {"model_name": "Qwen2.5-3B-Instruct", "model_path": "/home/hao/Workspace/models/qwen/Qwen2.5-3B-Instruct", "params": 3.09e9, "num_layers": 36, "hidden_size": 2048, "num_kv_heads": 128}
-# MODEL_INFO = {"model_name": "Qwen2.5-3B-Instruct", "model_path": "/Users/hao/Workspace/Other/models/Qwen2.5-1.5B", "params": 3.09e9, "num_layers": 36, "hidden_size": 2048, "num_kv_heads": 128}
-# MODEL_INFO = {"model_name": "Llama-3.2-3B-Instruct", "model_path": "/home/hao/Workspace/models/meta-llama/Llama-3.2-3B-Instruct", "params": 3.21e9, "num_layers": 28, "hidden_size": 3072, "num_kv_heads": 128}
-# MODEL_INFO = {"model_name": "Gemma-3-4b-Instruct", "model_path": "/home/hao/Workspace/models/google/gemma-3-4b-it", "params": 4.00e9, "num_layers": 34, "hidden_size": 2560, "num_kv_heads": 256}
+# MODEL_INFO = {"model_name": "Qwen2.5-3B-Instruct", "model_path": "/HOME/scw6e0x/run/zzhao/models/Qwen2.5-3B-Instruct", "params": 3.09e9, "num_layers": 36, "hidden_size": 2048, "num_kv_heads": 2, "head_dim": 128}
+MODEL_INFO = {"model_name": "Llama-3.2-3B-Instruct", "model_path": "/HOME/scw6e0x/run/zzhao/models/Llama-3.2-3B-Instruct", "params": 3.21e9, "num_layers": 28, "hidden_size": 3072, "num_kv_heads": 8, "head_dim": 128}
+# MODEL_INFO = {"model_name": "Gemma-3-4b-Instruct", "model_path": "/HOME/scw6e0x/run/zzhao/models/gemma-3-4b-it", "params": 4.00e9, "num_layers": 34, "hidden_size": 2560, "num_kv_heads": 4, "head_dim": 256}
 
 MAX_NEW_TOKENS = 1024  # 最多生成多少个新 token
 MAX_INPUT_TOKENS = 2048  # 最多输入多少个 token
 
 # token输出长度预测器本地基础模型及训练好的权重路径
-TOKEN_PREDICTOR = {"base_model" : "/Users/hao/Workspace/Other/models/Qwen2.5-1.5B", "checkpoint_path": "./core/predictor/"}
+TOKEN_PREDICTOR = {"base_model" : "/HOME/scw6e0x/run/zzhao/models/Qwen2.5-1.5B", "checkpoint_path": "/HOME/scw6e0x/run/zzhao/code/BatchProcess/core/predictor/STABS_prod_model_0806.pt"}
 
 # 服务器超参数(服务器名称，浮点计算能力(FLOPS)，GPU 的最大内存(MB)，GPU 的内存带宽，可用服务器数量（谱聚类聚类数量）)
-SER_PARA = {"ser_name": "4060 Ti", "gpu_flops": 22e12, "gpu_memory": 16 * 1024, "gpu_bandwidth": 8 * 1024, "ser_number": 2}
-# SER_PARA = {"ser_name": "4090", "gpu_flops": 22e12, "gpu_memory": 24 * 1024, "gpu_bandwidth": 8 * 1024, "ser_number": 2}
+# SER_PARA = {"ser_name": "4060 Ti", "gpu_flops": 22e12, "gpu_memory": 16 * 1024, "gpu_bandwidth": 288 * 1024, "ser_number": 2}
+SER_PARA = {"ser_name": "4090", "gpu_flops": 82.6e12, "gpu_memory": 24 * 1024, "gpu_bandwidth": 1008 * 1024, "ser_number": 2}
 
-DATASET_LOCAL_PATH = "./data/batch_process_test.jsonl"  # 数据集本地路径
+DATASET_LOCAL_PATH = "/HOME/scw6e0x/run/zzhao/code/BatchProcess/data/batch_process_test.jsonl"  # 数据集本地路径
 
 # 批量大小超参数
-SAMPLE_SIZE = 4  # 每次总共产生多少任务
-MAX_SINGLE_BATCH_SIZE = 2  # 最大单批次大小
+SAMPLE_SIZE = 600  # 每次总共产生多少任务
+MAX_SINGLE_BATCH_SIZE = 32  # 最大单批次大小
 SCHEDULER = "bilateral"  # 批处理任务调度器
 
 # 实验结果保存路径
 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-TASK_LOG_SAVE_PATH = f"./data/task_logs/tasks_logs_{timestamp}.csv"
-BATCH_LOG_SAVE_PATH = f"./data/batch_logs/batch_logs_{timestamp}.csv"
+TASK_LOG_SAVE_PATH = f"./data/task_logs/{MODEL_INFO['model_name']}_tasks_logs_{timestamp}.csv"
+BATCH_LOG_SAVE_PATH = f"./data/batch_logs/{MODEL_INFO['model_name']}_batch{MAX_SINGLE_BATCH_SIZE}_logs_{timestamp}.csv"
 
 # 日志与输出目录配置
 OUTPUT_DIR = "./data/batch_logs"
@@ -104,9 +103,11 @@ def main():
     inference_worker = InferenceEngine(MODEL_INFO['model_name'], MODEL_INFO['model_path'], MAX_NEW_TOKENS, MAX_INPUT_TOKENS)
 
     # 加载token输出长度预测器
+    logging.info("Loading token length predictor...")
     token_length_predictor = TokenLengthPredictor(TOKEN_PREDICTOR['base_model'], TOKEN_PREDICTOR['checkpoint_path'])
 
     # 从数据集抽取的数据构建任务
+    logging.info("Data construction task extracted from the dataset...")
     all_tasks = []
     for _, row in dataset.iterrows():
         if len(all_tasks) >= SAMPLE_SIZE: break
@@ -126,11 +127,12 @@ def main():
     logger.info(f"Loaded Tasks: {len(all_tasks)}")
 
     # 预测每个任务输出长度并计算每个任务计算密度
+    logger.info(f"Calculate density for each task...")
     for task in all_tasks:
         # 预测任务输出长度
         task.predicted_output_length = token_length_predictor.predict_one(task.prompt, MODEL_INFO['model_name'])
         # 计算任务计算密度
-        task.cal_computation_density(MODEL_INFO['params'], MODEL_INFO['num_layers'], MODEL_INFO['hidden_size'], MODEL_INFO['num_kv_heads'], SER_PARA['gpu_flops'], SER_PARA['gpu_bandwidth'])
+        task.cal_computation_density(MODEL_INFO['params'], MODEL_INFO['num_layers'], MODEL_INFO['hidden_size'], MODEL_INFO['num_kv_heads'], MODEL_INFO['head_dim'], SER_PARA['gpu_flops'], SER_PARA['gpu_bandwidth'])
         # task.print_task()
 
     # 构建 Prefix Graph
@@ -142,6 +144,7 @@ def main():
     logger.info(f"Spectral clustering completed, total Clusters: {len(clusters)}")
 
     # 初始化任务调度器
+    logging.info(f"Initialize task scheduler {SCHEDULER}")
     scheduler = None
     if SCHEDULER == "bilateral":
         scheduler = BidirectionalScanScheduler(MAX_SINGLE_BATCH_SIZE, SER_PARA['gpu_flops'], SER_PARA['gpu_memory'])
@@ -158,18 +161,19 @@ def main():
 
     logger.info(f"Batch division completed, total batches: {len(all_batches)}")
 
-    logger.info("\nBatch processing Start \n")
-
     # 批处理任务
+    logger.info("Batch processing Start")
     for batch_id, batch in enumerate(all_batches):
         inference_worker.inference_batch(batch)  # 批处理
-        batch.print_batch()
+        logger.info(f"Cluster {batch.cluster_id}, batch {batch.batch_id}, batch size: {batch.batch_size},  handle time: {batch.time_cost:.4f} s, "
+                    f"avg. GPU memory usage:{batch.gpu_memory_usage:.2f}, avg. GPU usage: {batch.gpu_usage:.2f}, "
+                    f"generated tokens: {batch.total_generated_tokens}, throughput: {batch.tokens_throughput:.4f} tk/s, tasks: {[task.task_id for task in batch.tasks]}")
 
         # 每个批次信息及时保存
         save_result.append_tasks_to_csv(batch.tasks, TASK_LOG_SAVE_PATH)
         save_result.append_batch_to_csv(batch, BATCH_LOG_SAVE_PATH)
 
-    logger.info("\nBatch processing End\n")
+    logger.info("Batch processing End")
 
     # 结果分析
     analysis_tasks_result(all_tasks)

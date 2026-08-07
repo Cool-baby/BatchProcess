@@ -9,8 +9,8 @@
 import logging
 import time
 import torch
-from transformers import AutoModelForCausalLM
-from transformers import AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from utils.get_runtime_info import start_gpu_monitor, stop_gpu_monitor
 
 
 class InferenceEngine:
@@ -39,6 +39,7 @@ class InferenceEngine:
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
             self.tokenizer.padding_side = "left"
+            self.tokenizer.truncation_side = "left"  # 确保超长时丢弃前面的上下文，保留最后的引导符
         elif model_name == "Gemma-3-4b-Instruct":
             self.tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
             # 避免 pad_token 与 eos_token 相同导致的早停失效
@@ -47,12 +48,13 @@ class InferenceEngine:
             elif self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
             self.tokenizer.padding_side = "left"
+            self.tokenizer.truncation_side = "left"  # 确保超长时丢弃前面的上下文，保留最后的引导符
         else:
             raise Exception("Unknown model tokenizer")
 
         # model
         logging.info(f"Loading model - {model_name}")
-        self.model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.bfloat16, device_map="auto", trust_remote_code=True)
+        self.model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.bfloat16, device_map="auto", trust_remote_code=True, local_files_only=True, attn_implementation="sdpa")
 
         self.model.eval()
         logging.info(self.model.hf_device_map)
@@ -119,6 +121,9 @@ class InferenceEngine:
 
         # 3. generate
         if self.model_name == "Qwen2.5-3B-Instruct" or self.model_name == "Llama-3.2-3B-Instruct":
+
+            monitor_ctx = start_gpu_monitor(interval=0.1)  # 开启子线程，采样GPU利用率
+            torch.cuda.synchronize()  # 确保之前的CUDA任务已清空
             start_time = time.time()
             with torch.inference_mode():
                 outputs = self.model.generate(
@@ -132,11 +137,14 @@ class InferenceEngine:
                     pad_token_id=self.tokenizer.eos_token_id,
                     eos_token_id=self.tokenizer.eos_token_id,
                 )
+            torch.cuda.synchronize()  # 强制等待GPU计算完毕
             end_time = time.time()
             batch_latency = end_time - start_time
             batch.time_cost = batch_latency
 
-            # 4. 更新Prompt对象
+            batch.gpu_usage, batch.gpu_memory_usage = stop_gpu_monitor(monitor_ctx)  # 结束采样，计算推理过程平均GPU利用率
+
+            # 4. 获取推理结果并更新Task
             for idx, task in enumerate(batch.tasks):
                 # 获取模型新生成的 Token
                 generated_ids_with_pad = outputs[idx][input_seq_len:]
@@ -167,6 +175,8 @@ class InferenceEngine:
             # 收集所有的停止 Token ID 用于后续精确切片判定
             stop_token_ids = set(eos_token_ids + [self.tokenizer.pad_token_id])
 
+            monitor_ctx = start_gpu_monitor(interval=0.1)  # 开启子线程，采样GPU利用率
+            torch.cuda.synchronize()  # 确保之前的CUDA任务已清空
             start_time = time.time()
             with torch.inference_mode():
                 outputs = self.model.generate(
@@ -180,11 +190,14 @@ class InferenceEngine:
                     pad_token_id=self.tokenizer.eos_token_id,
                     eos_token_id=eos_token_ids,  # 传入包含 <end_of_turn> 的列表
                 )
+            torch.cuda.synchronize()  # 强制等待GPU计算完毕
             end_time = time.time()
             batch_latency = end_time - start_time
             batch.time_cost = batch_latency
 
-            # 4. 更新 Prompt 对象
+            batch.gpu_usage, batch.gpu_memory_usage = stop_gpu_monitor(monitor_ctx)  # 结束采样，计算推理过程平均GPU利用率
+
+            # 4. 获取推理结果并更新Task
             for idx, task in enumerate(batch.tasks):
                 # 切除 Prompt 部分，仅保留新生成的 Token
                 generated_sequence = outputs[idx][input_seq_len:].tolist()

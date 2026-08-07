@@ -17,14 +17,14 @@ def comp_density(m_param, input_length, predicted_output_length, h, l, f_ser):
     return (2 * m_param * (input_length + predicted_output_length) + 4 * input_length * input_length * h * l) / f_ser
 
 
-def mem_density(l, h_kv, input_length, predicted_output_length, bandwidth):
+def mem_density(l, h_kv, n_kv, input_length, predicted_output_length, bandwidth):
     """
     内存密集型任务估算
     """
-    return (LAMBDA * l * h_kv * (input_length * predicted_output_length + 0.5 * predicted_output_length * predicted_output_length)) / bandwidth
+    return (LAMBDA * l * h_kv * n_kv * (input_length * predicted_output_length + 0.5 * predicted_output_length * predicted_output_length)) / bandwidth
 
 
-def task_density(m_param, l, h, h_kv, input_length, predicted_output_length, f_ser, bandwidth):
+def task_density(m_param, l, h, h_kv, n_kv, input_length, predicted_output_length, f_ser, bandwidth):
     """
     计算任务密度，较高计算密度对应着计算密集型推理任务,而较低计算密度则表示内存密集型推理任务
     :param m_param: 大规模模型的参数量
@@ -39,9 +39,9 @@ def task_density(m_param, l, h, h_kv, input_length, predicted_output_length, f_s
     """
     # 计算以Median为基准的计算密度和内存密度
     comp_dens_med = comp_density(m_param, input_length, predicted_output_length['median_length'], h, l, f_ser)
-    mem_dens_med = mem_density(l, h_kv, input_length, predicted_output_length['median_length'], bandwidth)
+    mem_dens_med = mem_density(l, h_kv, n_kv, input_length, predicted_output_length['median_length'], bandwidth)
     # 计算以P95为基准的计算密度和内存密度
     comp_dens_p95 = comp_density(m_param, input_length, predicted_output_length['p95_length'], h, l, f_ser)
-    mem_dens_p95 = mem_density(l, h_kv, input_length, predicted_output_length['p95_length'], bandwidth)
+    mem_dens_p95 = mem_density(l, h_kv, n_kv, input_length, predicted_output_length['p95_length'], bandwidth)
 
     return (1 - GAMMA) * comp_dens_med / mem_dens_med + GAMMA * comp_dens_p95 / mem_dens_p95

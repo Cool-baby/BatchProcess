@@ -30,12 +30,15 @@ class Batch:
         self.total_generated_tokens = 0
         self.tokens_throughput = 0
 
+        # GPU资源利用率记录
+        self.gpu_memory_usage = 0
+        self.gpu_usage = 0
+
         # completion统计
         self.finished_tasks = 0
         self.finished_rate = 0
         self.truncated_tasks = 0
         self.truncated_rate = 0
-
 
     def print_batch(self):
         """
@@ -63,6 +66,10 @@ class Batch:
             # token统计
             "total_generated_tokens": self.total_generated_tokens,
             "tokens_throughput": self.tokens_throughput,
+
+            # GPU资源统计
+            "gpu_memory_usage": self.gpu_memory_usage,
+            "gpu_usage": self.gpu_usage,
 
             # completion统计
             "finished_tasks": self.finished_tasks,

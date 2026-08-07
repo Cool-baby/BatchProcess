@@ -6,7 +6,14 @@
 @Date    ：2026/5/7 10:21 
 @Describe：获取运行阶段GPU或KV缓存等设备信息
 """
+import logging
 import subprocess
+import threading, time
+try:
+    import pynvml
+except ImportError:
+    logging.info("Import pynvml failed")
+    pass
 
 
 def get_gpu_metrics():
@@ -48,3 +55,31 @@ def get_kv_cache_size(past_key_values):
         total += v.numel() * v.element_size()
 
     return total / (1024 ** 2)  # MB
+
+
+def start_gpu_monitor(device_id=0, interval=0.1):
+    """启动子线程进行GPU高频采样"""
+    pynvml.nvmlInit()
+    handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)
+    ctx = {'run': True, 'util': [], 'mem': []}
+
+    def sample_loop():
+        while ctx['run']:
+            ctx['util'].append(pynvml.nvmlDeviceGetUtilizationRates(handle).gpu)
+            ctx['mem'].append(pynvml.nvmlDeviceGetMemoryInfo(handle).used / (1024 ** 3))  # 转换为GB
+            time.sleep(interval)
+
+    t = threading.Thread(target=sample_loop)
+    t.start()
+    return ctx, t
+
+
+def stop_gpu_monitor(monitor_ctx):
+    """停止采样并计算平均值"""
+    ctx, t = monitor_ctx
+    ctx['run'] = False
+    t.join()
+    avg_util = sum(ctx['util']) / len(ctx['util']) if ctx['util'] else 0
+    avg_mem = sum(ctx['mem']) / len(ctx['mem']) if ctx['mem'] else 0
+    logging.info(f"当前批次平均计算利用率: {avg_util:.1f}%, 平均显存: {avg_mem:.2f} GB")
+    return avg_util, avg_mem

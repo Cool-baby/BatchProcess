@@ -42,12 +42,12 @@ class Task:
         # 是否推理完成 0 未完成，1 完成
         self.finished = 0
 
-    def cal_computation_density(self, m_param, l, h, h_kv, f_ser, bandwidth):
+    def cal_computation_density(self, m_param, l, h, h_kv, n_kv, f_ser, bandwidth):
         """
         计算此任务的计算密度
         """
         # 计算 计算密度
-        density = task_density(m_param, l, h, h_kv, self.input_length, self.predicted_output_length, f_ser, bandwidth)
+        density = task_density(m_param, l, h, h_kv, n_kv, self.input_length, self.predicted_output_length, f_ser, bandwidth)
         self.comp_density = density
 
         return density
