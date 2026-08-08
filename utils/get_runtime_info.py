@@ -9,6 +9,7 @@
 import logging
 import subprocess
 import threading, time
+from contextlib import contextmanager
 try:
     import pynvml
 except ImportError:
@@ -57,29 +58,46 @@ def get_kv_cache_size(past_key_values):
     return total / (1024 ** 2)  # MB
 
 
-def start_gpu_monitor(device_id=0, interval=0.1):
-    """启动子线程进行GPU高频采样"""
+@contextmanager
+def track_gpu_resources(device_id=0, interval=0.1):
+    """
+    基于上下文管理器的 GPU 资源监控器 (支持提取统计数据)
+    """
+    # 初始化统计字典
+    ctx = {'run': True, 'util': [], 'mem': [], 'avg_util': 0.0, 'avg_mem': 0.0}
+
+    if pynvml is None:
+        yield ctx
+        return
+
     pynvml.nvmlInit()
     handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)
-    ctx = {'run': True, 'util': [], 'mem': []}
 
     def sample_loop():
         while ctx['run']:
-            ctx['util'].append(pynvml.nvmlDeviceGetUtilizationRates(handle).gpu)
-            ctx['mem'].append(pynvml.nvmlDeviceGetMemoryInfo(handle).used / (1024 ** 3))  # 转换为GB
+            try:
+                util = pynvml.nvmlDeviceGetUtilizationRates(handle).gpu
+                mem = pynvml.nvmlDeviceGetMemoryInfo(handle).used / (1024 ** 3) # GB
+                ctx['util'].append(util)
+                ctx['mem'].append(mem)
+            except Exception:
+                break
             time.sleep(interval)
 
-    t = threading.Thread(target=sample_loop)
+    # 启动守护线程
+    t = threading.Thread(target=sample_loop, daemon=True)
     t.start()
-    return ctx, t
 
+    try:
+        # 将 ctx 字典引用传递给 with ... as 变量
+        yield ctx
+    finally:
+        # 1. 停止线程
+        ctx['run'] = False
+        t.join(timeout=1.0)
+        pynvml.nvmlShutdown()
 
-def stop_gpu_monitor(monitor_ctx):
-    """停止采样并计算平均值"""
-    ctx, t = monitor_ctx
-    ctx['run'] = False
-    t.join()
-    avg_util = sum(ctx['util']) / len(ctx['util']) if ctx['util'] else 0
-    avg_mem = sum(ctx['mem']) / len(ctx['mem']) if ctx['mem'] else 0
-    logging.info(f"当前批次平均计算利用率: {avg_util:.1f}%, 平均显存: {avg_mem:.2f} GB")
-    return avg_util, avg_mem
+        # 2. 计算平均值并回写到 ctx 字典中
+        if ctx['util']:
+            ctx['avg_util'] = sum(ctx['util']) / len(ctx['util'])
+            ctx['avg_mem'] = sum(ctx['mem']) / len(ctx['mem'])

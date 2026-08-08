@@ -11,19 +11,15 @@ import logging
 import os
 from datetime import datetime
 import pandas as pd
-from core.predictor.token_length_predictor import TokenLengthPredictor
-from core.scheduler.bidirectional_scan_scheduler import BidirectionalScanScheduler
 from core.inference.inference_engine import InferenceEngine
-from core.graph_build.prefix_graph import build_prefix_graph
-from core.graph_build.spectral_partition import spectral_partition
+from core.scheduler.schedule_factory import SchedulerFactory
 from utils.running_result_analysis import analysis_tasks_result, analysis_batches_result
-from object.batch import Batch
 from object.task import generate_task_by_prompt
 from utils import save_result
 
 # LLM超参数(模型名称、路径、模型总参数量、Transformer block 层数、每层隐藏维度、KV头特征维度)
-# MODEL_INFO = {"model_name": "Qwen2.5-3B-Instruct", "model_path": "/HOME/scw6e0x/run/zzhao/models/Qwen2.5-3B-Instruct", "params": 3.09e9, "num_layers": 36, "hidden_size": 2048, "num_kv_heads": 2, "head_dim": 128}
-MODEL_INFO = {"model_name": "Llama-3.2-3B-Instruct", "model_path": "/HOME/scw6e0x/run/zzhao/models/Llama-3.2-3B-Instruct", "params": 3.21e9, "num_layers": 28, "hidden_size": 3072, "num_kv_heads": 8, "head_dim": 128}
+MODEL_INFO = {"model_name": "Qwen2.5-3B-Instruct", "model_path": "/HOME/scw6e0x/run/zzhao/models/Qwen2.5-3B-Instruct", "params": 3.09e9, "num_layers": 36, "hidden_size": 2048, "num_kv_heads": 2, "head_dim": 128}
+# MODEL_INFO = {"model_name": "Llama-3.2-3B-Instruct", "model_path": "/HOME/scw6e0x/run/zzhao/models/Llama-3.2-3B-Instruct", "params": 3.21e9, "num_layers": 28, "hidden_size": 3072, "num_kv_heads": 8, "head_dim": 128}
 # MODEL_INFO = {"model_name": "Gemma-3-4b-Instruct", "model_path": "/HOME/scw6e0x/run/zzhao/models/gemma-3-4b-it", "params": 4.00e9, "num_layers": 34, "hidden_size": 2560, "num_kv_heads": 4, "head_dim": 256}
 
 MAX_NEW_TOKENS = 1024  # 最多生成多少个新 token
@@ -40,13 +36,13 @@ DATASET_LOCAL_PATH = "/HOME/scw6e0x/run/zzhao/code/BatchProcess/data/batch_proce
 
 # 批量大小超参数
 SAMPLE_SIZE = 600  # 每次总共产生多少任务
-MAX_SINGLE_BATCH_SIZE = 32  # 最大单批次大小
+MAX_SINGLE_BATCH_SIZE = 24  # 最大单批次大小
 SCHEDULER = "bilateral"  # 批处理任务调度器
 
 # 实验结果保存路径
 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-TASK_LOG_SAVE_PATH = f"./data/task_logs/{MODEL_INFO['model_name']}_tasks_logs_{timestamp}.csv"
-BATCH_LOG_SAVE_PATH = f"./data/batch_logs/{MODEL_INFO['model_name']}_batch{MAX_SINGLE_BATCH_SIZE}_logs_{timestamp}.csv"
+TASK_LOG_SAVE_PATH = f"./data/task_logs/{MODEL_INFO['model_name']}_{SCHEDULER}_{MAX_SINGLE_BATCH_SIZE}_tasks_logs_{timestamp}.csv"
+BATCH_LOG_SAVE_PATH = f"./data/batch_logs/{MODEL_INFO['model_name']}_{SCHEDULER}_{MAX_SINGLE_BATCH_SIZE}_batch_logs_{timestamp}.csv"
 
 # 日志与输出目录配置
 OUTPUT_DIR = "./data/batch_logs"
@@ -96,17 +92,13 @@ def load_dataset_from_jsonl(filepath: str) -> pd.DataFrame:
 
 def main():
 
-    # 加载数据集
+    # 1. 加载数据集
     dataset = load_dataset_from_jsonl(DATASET_LOCAL_PATH)
 
-    # 加载LLM推理引擎
+    # 2. 加载LLM推理引擎
     inference_worker = InferenceEngine(MODEL_INFO['model_name'], MODEL_INFO['model_path'], MAX_NEW_TOKENS, MAX_INPUT_TOKENS)
 
-    # 加载token输出长度预测器
-    logging.info("Loading token length predictor...")
-    token_length_predictor = TokenLengthPredictor(TOKEN_PREDICTOR['base_model'], TOKEN_PREDICTOR['checkpoint_path'])
-
-    # 从数据集抽取的数据构建任务
+    # 3. 从数据集抽取的数据构建任务
     logging.info("Data construction task extracted from the dataset...")
     all_tasks = []
     for _, row in dataset.iterrows():
@@ -126,42 +118,23 @@ def main():
 
     logger.info(f"Loaded Tasks: {len(all_tasks)}")
 
-    # 预测每个任务输出长度并计算每个任务计算密度
-    logger.info(f"Calculate density for each task...")
-    for task in all_tasks:
-        # 预测任务输出长度
-        task.predicted_output_length = token_length_predictor.predict_one(task.prompt, MODEL_INFO['model_name'])
-        # 计算任务计算密度
-        task.cal_computation_density(MODEL_INFO['params'], MODEL_INFO['num_layers'], MODEL_INFO['hidden_size'], MODEL_INFO['num_kv_heads'], MODEL_INFO['head_dim'], SER_PARA['gpu_flops'], SER_PARA['gpu_bandwidth'])
-        # task.print_task()
-
-    # 构建 Prefix Graph
-    G = build_prefix_graph(all_tasks)
-    logger.info(f"Prefix graph construction completed, nodes: {G.number_of_nodes()}, edges: {G.number_of_edges()}")
-
-    # 谱聚类
-    clusters = spectral_partition(G, num_clusters=SER_PARA['ser_number'])
-    logger.info(f"Spectral clustering completed, total Clusters: {len(clusters)}")
-
-    # 初始化任务调度器
+    # 4. 初始化任务调度器
     logging.info(f"Initialize task scheduler {SCHEDULER}")
-    scheduler = None
-    if SCHEDULER == "bilateral":
-        scheduler = BidirectionalScanScheduler(MAX_SINGLE_BATCH_SIZE, SER_PARA['gpu_flops'], SER_PARA['gpu_memory'])
-    else:
-        raise Exception(f"Scheduler {SCHEDULER} not implemented")
+    # 调度器需要的信息
+    config = {
+        'MAX_SINGLE_BATCH_SIZE': MAX_SINGLE_BATCH_SIZE,
+        'MODEL_INFO': MODEL_INFO,
+        'SER_PARA': SER_PARA,
+        'TOKEN_PREDICTOR': TOKEN_PREDICTOR,
+    }
+    scheduler = SchedulerFactory.create(SCHEDULER, config)
 
-    # 并对任务分类形成批次
-    all_batches = []
-    for cluster_id, task_group in enumerate(clusters):
-        batches = scheduler.scheduling(task_group)
-        for batch_id, single_batch in enumerate(batches):
-            batch = Batch(cluster_id, batch_id, len(single_batch), single_batch)
-            all_batches.append(batch)
+    # 5. 任务调度器调度任务
+    logging.info(f"↓↓↓ Start scheduling tasks ↓↓↓ \n")
+    all_batches = scheduler.schedule(all_tasks)
+    logging.info(f"\n ↑↑↑ Task scheduling completed ↑↑↑")
 
-    logger.info(f"Batch division completed, total batches: {len(all_batches)}")
-
-    # 批处理任务
+    # 6. 批处理任务
     logger.info("Batch processing Start")
     for batch_id, batch in enumerate(all_batches):
         inference_worker.inference_batch(batch)  # 批处理
@@ -175,10 +148,11 @@ def main():
 
     logger.info("Batch processing End")
 
-    # 结果分析
+    # 7. 结果分析
     analysis_tasks_result(all_tasks)
     analysis_batches_result(all_batches)
 
 
 if __name__ == "__main__":
+    logger.info("Starting...")
     main()

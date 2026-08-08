@@ -10,7 +10,7 @@ import logging
 import time
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from utils.get_runtime_info import start_gpu_monitor, stop_gpu_monitor
+from utils.get_runtime_info import track_gpu_resources
 
 
 class InferenceEngine:
@@ -122,27 +122,27 @@ class InferenceEngine:
         # 3. generate
         if self.model_name == "Qwen2.5-3B-Instruct" or self.model_name == "Llama-3.2-3B-Instruct":
 
-            monitor_ctx = start_gpu_monitor(interval=0.1)  # 开启子线程，采样GPU利用率
             torch.cuda.synchronize()  # 确保之前的CUDA任务已清空
             start_time = time.time()
-            with torch.inference_mode():
-                outputs = self.model.generate(
-                    input_ids=inputs["input_ids"],
-                    attention_mask=inputs["attention_mask"],
-                    do_sample=True,
-                    temperature=0.8,
-                    top_p=0.95,
-                    repetition_penalty=1.1,
-                    max_new_tokens=self.max_new_tokens,
-                    pad_token_id=self.tokenizer.eos_token_id,
-                    eos_token_id=self.tokenizer.eos_token_id,
-                )
+            with track_gpu_resources(interval=0.1) as gpu_stats:
+                with torch.inference_mode():
+                    outputs = self.model.generate(
+                        input_ids=inputs["input_ids"],
+                        attention_mask=inputs["attention_mask"],
+                        do_sample=True,
+                        temperature=0.8,
+                        top_p=0.95,
+                        repetition_penalty=1.1,
+                        max_new_tokens=self.max_new_tokens,
+                        pad_token_id=self.tokenizer.eos_token_id,
+                        eos_token_id=self.tokenizer.eos_token_id,
+                    )
             torch.cuda.synchronize()  # 强制等待GPU计算完毕
             end_time = time.time()
             batch_latency = end_time - start_time
             batch.time_cost = batch_latency
-
-            batch.gpu_usage, batch.gpu_memory_usage = stop_gpu_monitor(monitor_ctx)  # 结束采样，计算推理过程平均GPU利用率
+            batch.gpu_usage = gpu_stats['avg_util']
+            batch.gpu_memory_usage = gpu_stats['avg_mem']
 
             # 4. 获取推理结果并更新Task
             for idx, task in enumerate(batch.tasks):
@@ -175,27 +175,27 @@ class InferenceEngine:
             # 收集所有的停止 Token ID 用于后续精确切片判定
             stop_token_ids = set(eos_token_ids + [self.tokenizer.pad_token_id])
 
-            monitor_ctx = start_gpu_monitor(interval=0.1)  # 开启子线程，采样GPU利用率
             torch.cuda.synchronize()  # 确保之前的CUDA任务已清空
             start_time = time.time()
-            with torch.inference_mode():
-                outputs = self.model.generate(
-                    input_ids=inputs["input_ids"],
-                    attention_mask=inputs["attention_mask"],
-                    do_sample=True,
-                    temperature=0.8,
-                    top_p=0.95,
-                    repetition_penalty=1.1,
-                    max_new_tokens=self.max_new_tokens,
-                    pad_token_id=self.tokenizer.eos_token_id,
-                    eos_token_id=eos_token_ids,  # 传入包含 <end_of_turn> 的列表
-                )
+            with track_gpu_resources(interval=0.1) as gpu_stats:
+                with torch.inference_mode():
+                    outputs = self.model.generate(
+                        input_ids=inputs["input_ids"],
+                        attention_mask=inputs["attention_mask"],
+                        do_sample=True,
+                        temperature=0.8,
+                        top_p=0.95,
+                        repetition_penalty=1.1,
+                        max_new_tokens=self.max_new_tokens,
+                        pad_token_id=self.tokenizer.eos_token_id,
+                        eos_token_id=eos_token_ids,  # 传入包含 <end_of_turn> 的列表
+                    )
             torch.cuda.synchronize()  # 强制等待GPU计算完毕
             end_time = time.time()
             batch_latency = end_time - start_time
             batch.time_cost = batch_latency
-
-            batch.gpu_usage, batch.gpu_memory_usage = stop_gpu_monitor(monitor_ctx)  # 结束采样，计算推理过程平均GPU利用率
+            batch.gpu_usage = gpu_stats['avg_util']
+            batch.gpu_memory_usage = gpu_stats['avg_mem']
 
             # 4. 获取推理结果并更新Task
             for idx, task in enumerate(batch.tasks):
