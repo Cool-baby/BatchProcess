@@ -29,15 +29,21 @@ MAX_INPUT_TOKENS = 2048  # 最多输入多少个 token
 TOKEN_PREDICTOR = {"base_model" : "/HOME/scw6e0x/run/zzhao/models/Qwen2.5-1.5B", "checkpoint_path": "/HOME/scw6e0x/run/zzhao/code/BatchProcess/core/predictor/STABS_prod_model_0806.pt"}
 
 # 服务器超参数(服务器名称，浮点计算能力(FLOPS)，GPU 的最大内存(MB)，GPU 的内存带宽，可用服务器数量（谱聚类聚类数量）)
-# SER_PARA = {"ser_name": "4060 Ti", "gpu_flops": 22e12, "gpu_memory": 16 * 1024, "gpu_bandwidth": 288 * 1024, "ser_number": 2}
-SER_PARA = {"ser_name": "4090", "gpu_flops": 82.6e12, "gpu_memory": 24 * 1024, "gpu_bandwidth": 1008 * 1024, "ser_number": 2}
+# SER_PARA = {"ser_name": "4060 Ti", "gpu_flops": 22e12, "gpu_memory": 16 * (1024**3), "gpu_bandwidth": 288 * 1e9, "ser_number": 2}
+SER_PARA = {"ser_name": "4090", "gpu_flops": 82.6e12, "gpu_memory": 24 * (1024**3), "gpu_bandwidth": 1008 * 1e9, "ser_number": 1}
 
-DATASET_LOCAL_PATH = "/HOME/scw6e0x/run/zzhao/code/BatchProcess/data/batch_process_test.jsonl"  # 数据集本地路径
+DATASET_LOCAL_PATH = "/HOME/scw6e0x/run/zzhao/code/BatchProcess/data/batch_process_test_short.jsonl"  # 数据集本地路径
 
 # 批量大小超参数
-SAMPLE_SIZE = 600  # 每次总共产生多少任务
-MAX_SINGLE_BATCH_SIZE = 24  # 最大单批次大小
+SAMPLE_SIZE = 300  # 每次总共产生多少任务
+MAX_SINGLE_BATCH_SIZE = 16  # 最大单批次大小
 SCHEDULER = "bilateral"  # 批处理任务调度器
+# SCHEDULER = "fcfs"  # 批处理任务调度器
+# SCHEDULER = "prefix-tree"  # 批处理任务调度器
+# SCHEDULER = "sjf"  # 批处理任务调度器
+# SCHEDULER = "dftsp"  # 批处理任务调度器
+# SCHEDULER = "dftsp"  # 批处理任务调度器
+# SCHEDULER = "ranking"  # 批处理任务调度器
 
 # 实验结果保存路径
 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -132,7 +138,7 @@ def main():
     # 5. 任务调度器调度任务
     logging.info(f"↓↓↓ Start scheduling tasks ↓↓↓ \n")
     all_batches = scheduler.schedule(all_tasks)
-    logging.info(f"\n ↑↑↑ Task scheduling completed ↑↑↑")
+    logging.info(f"↑↑↑ Task scheduling completed ↑↑↑ \n")
 
     # 6. 批处理任务
     logger.info("Batch processing Start")
@@ -149,8 +155,8 @@ def main():
     logger.info("Batch processing End")
 
     # 7. 结果分析
-    analysis_tasks_result(all_tasks)
-    analysis_batches_result(all_batches)
+    # analysis_tasks_result(all_tasks)
+    # analysis_batches_result(all_batches)
 
 
 if __name__ == "__main__":

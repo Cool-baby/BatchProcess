@@ -6,7 +6,6 @@
 @Date    ：2026/5/7 11:24 
 @Describe：Task对象
 """
-from core.scheduler.computation_density import task_density
 
 
 class Task:
@@ -39,18 +38,10 @@ class Task:
 
         # 推理结果
         self.runtime_latency = None
+        # 推理重复次数，推理一次次数加1
+        self.repeat_times = 0
         # 是否推理完成 0 未完成，1 完成
         self.finished = 0
-
-    def cal_computation_density(self, m_param, l, h, h_kv, n_kv, f_ser, bandwidth):
-        """
-        计算此任务的计算密度
-        """
-        # 计算 计算密度
-        density = task_density(m_param, l, h, h_kv, n_kv, self.input_length, self.predicted_output_length, f_ser, bandwidth)
-        self.comp_density = density
-
-        return density
 
     def print_task(self):
         """
@@ -89,6 +80,7 @@ class Task:
             "mem_cost": self.mem_cost,
 
             "runtime_latency": self.runtime_latency,
+            "repeat_time": self.repeat_times,
             "finished": self.finished
         }
 
