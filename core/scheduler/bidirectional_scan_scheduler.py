@@ -42,9 +42,9 @@ class BidirectionalScanScheduler(BaseScheduler):
             # 预测任务输出长度
             task.predicted_output_length = token_length_predictor.predict_one(task.prompt, model_info['model_name'])
             # 计算任务计算密度
-            task.cal_computation_density(model_info['params'], model_info['num_layers'], model_info['hidden_size'],
-                                         model_info['num_kv_heads'], model_info['head_dim'], ser_para['gpu_flops'],
-                                         ser_para['gpu_bandwidth'])
+            task.comp_density = task_density(model_info['params'], model_info['num_layers'], model_info['hidden_size'],
+                                         model_info['head_dim'], model_info['num_kv_heads'], task.input_length,
+                                        task.predicted_output_length, ser_para['gpu_flops'], ser_para['gpu_bandwidth'])
             # task.print_task()
 
         # 3. 构建 Prefix Graph
@@ -155,27 +155,28 @@ class BidirectionalScanScheduler(BaseScheduler):
 
         return batches
 
-    def task_density(self, m_param, l, h, h_kv, n_kv, input_length, predicted_output_length, f_ser, bandwidth):
-        """
-        计算任务密度，较高计算密度对应着计算密集型推理任务,而较低计算密度则表示内存密集型推理任务
-        :param m_param: 大规模模型的参数量
-        :param l: 大规模模型层数
-        :param h: 每层隐藏维度
-        :param h_kv: KV头特征维度
-        :param input_length: 任务输入长度
-        :param predicted_output_length: 预测输出长度
-        :param f_ser: 服务节点的浮点计算能力
-        :param bandwidth: GPU 的内存带宽
-        :return: 计算密度
-        """
-        # 计算以Median为基准的计算密度和内存密度
-        comp_dens_med = comp_density(m_param, input_length, predicted_output_length['median_length'], h, l, f_ser)
-        mem_dens_med = mem_density(l, h_kv, n_kv, input_length, predicted_output_length['median_length'], bandwidth)
-        # 计算以P95为基准的计算密度和内存密度
-        comp_dens_p95 = comp_density(m_param, input_length, predicted_output_length['p95_length'], h, l, f_ser)
-        mem_dens_p95 = mem_density(l, h_kv, n_kv, input_length, predicted_output_length['p95_length'], bandwidth)
+def task_density(m_param, l, h, h_kv, n_kv, input_length, predicted_output_length, f_ser, bandwidth):
+    """
+    计算任务密度，较高计算密度对应着计算密集型推理任务,而较低计算密度则表示内存密集型推理任务
+    :param m_param: 大规模模型的参数量
+    :param l: 大规模模型层数
+    :param h: 每层隐藏维度
+    :param h_kv: KV头特征维度
+    :param n_kv: KV头数量
+    :param input_length: 任务输入长度
+    :param predicted_output_length: 预测输出长度
+    :param f_ser: 服务节点的浮点计算能力
+    :param bandwidth: GPU 的内存带宽
+    :return: 计算密度
+    """
+    # 计算以Median为基准的计算密度和内存密度
+    comp_dens_med = comp_density(m_param, input_length, predicted_output_length['median_length'], h, l, f_ser)
+    mem_dens_med = mem_density(l, h_kv, n_kv, input_length, predicted_output_length['median_length'], bandwidth)
+    # 计算以P95为基准的计算密度和内存密度
+    comp_dens_p95 = comp_density(m_param, input_length, predicted_output_length['p95_length'], h, l, f_ser)
+    mem_dens_p95 = mem_density(l, h_kv, n_kv, input_length, predicted_output_length['p95_length'], bandwidth)
 
-        return (1 - GAMMA) * comp_dens_med / mem_dens_med + GAMMA * comp_dens_p95 / mem_dens_p95
+    return (1 - GAMMA) * comp_dens_med / mem_dens_med + GAMMA * comp_dens_p95 / mem_dens_p95
 
 
 def comp_density(m_param, input_length, predicted_output_length, h, l, f_ser):
