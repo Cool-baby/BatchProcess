@@ -1,0 +1,2 @@
+core/predictor/STABS_prod_model.part1 filter=lfs diff=lfs merge=lfs -text
+core/predictor/STABS_prod_model.part2 filter=lfs diff=lfs merge=lfs -text
