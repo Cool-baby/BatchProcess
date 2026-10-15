@@ -91,7 +91,7 @@ pip install -r requirements.txt
 The token output length predictor model weights are split into two parts due to the large file size. Before running the prediction code, first merge the two model weight files into a single model file:
 
 ```
-python main.pypython model_split_tool.py merge core/predictor/STABS_prod_model.part1 core/predictor/STABS_prod_model.part2 core/predictor/STABS_prod_model.pt
+python model_split_tool.py merge core/predictor/STABS_prod_model.part1 core/predictor/STABS_prod_model.part2 core/predictor/STABS_prod_model.pt
 ```
 
 After merging, update the model weight path in `main` to point to the merged model file:
