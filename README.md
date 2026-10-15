@@ -34,8 +34,6 @@ STABS predicts the statistical output-length characteristics of each LLM request
 
 - **Prediction Phase:** For incoming requests, the trained predictor performs **batch inference with a single forward pass** to simultaneously estimate their Med and P95 output lengths. The predicted statistics are then used as prior information for subsequent batch scheduling.
 
-![P95Result.png](https://github.com/Cool-baby/img-storage/blob/main/for_readme/BatchProcess/P95Result.png?raw=true)
-
 #### Batch Scheduling
 
 ![BatchOptimization.png](https://github.com/Cool-baby/img-storage/blob/main/for_readme/BatchProcess/BatchOptimization.png?raw=true)
