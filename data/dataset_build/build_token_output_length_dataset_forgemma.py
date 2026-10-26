@@ -54,6 +54,7 @@ SEED = 42
 
 # APS参数
 MEDIAN_THRESHOLD = 0.05  # 与中位数允许偏差(5%)
+P95_THRESHOLD = 0.05  # 与P95允许的偏差（5%）
 MAX_REPEAT_TIMES = 16  # 每个Prompt最多采样次数
 MIN_REPEAT_TIMES = 3  # 每个Prompt最少采样次数
 MIN_TOKEN_DELTA = 3  # 至少允许3token
@@ -199,7 +200,7 @@ while len(active_batch) > 0:
 
         # 更新 Prompt 对象
         prompt.add_output_result(output_length, MODEL_INFO['model_name'], output_text)
-        prompt.finished = prompt.is_stable(MIN_REPEAT_TIMES, MAX_REPEAT_TIMES, MEDIAN_THRESHOLD, MIN_TOKEN_DELTA)
+        prompt.finished = prompt.is_stable(MIN_REPEAT_TIMES, MAX_REPEAT_TIMES, MEDIAN_THRESHOLD, MIN_TOKEN_DELTA, P95_THRESHOLD)
 
     # 5. 删除已经Finished的Prompt
     new_active_batch = []

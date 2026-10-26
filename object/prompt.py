@@ -46,13 +46,14 @@ class Prompt:
         self.output_token_lengths.append(output_length)
         self.output_texts.append(output_text)
 
-    def is_stable(self, min_repeat_times, max_repeat_times, median_threshold,min_token_delta):
+    def is_stable(self, min_repeat_times, max_repeat_times, median_threshold, min_token_delta, p95_threshold):
         """
         判断是否已经稳定
         :param min_repeat_times: 规定的最小迭代次数
         :param max_repeat_times: 规定的最大迭代次数
         :param median_threshold: 中位数阈值差异限制
         :param min_token_delta: 至少允许token差异数
+        :param p95_threshold: P95阈值差异限制
         :return -1：未稳定； 0：达到最大上限结束； 1：因稳定早结束
         """
         if self.repeat_times >= max_repeat_times:
@@ -61,15 +62,25 @@ class Prompt:
         if self.repeat_times < min_repeat_times:
             return -1
 
-        # 计算当前中位数和容忍阈值
+        # 计算当前Med和P95
         temp_median = np.median(self.output_token_lengths)
-        delta = max(median_threshold * temp_median, min_token_delta)
+        temp_p95 = np.percentile(self.output_token_lengths, 95)
 
-        last1 = self.output_token_lengths[-1]
-        last2 = self.output_token_lengths[-2]
+        # 计算上一轮Med和P95
+        previous_lengths = self.output_token_lengths[:-1]
+        previous_median = np.median(previous_lengths)
+        previous_p95 = np.percentile(previous_lengths, 95)
 
-        # 最近两次差异值小与阈值则稳定
-        if abs(last1 - temp_median) <= delta and abs(last2 - temp_median) <= delta:
+        # 计算相邻两轮统计量的变化
+        median_change = abs(temp_median - previous_median)
+        p95_change = abs(temp_p95 - previous_p95)
+
+        # Med和P95相对变化约束，并保留最小绝对差异
+        median_stable = (median_change <= max(median_threshold * abs(temp_median), min_token_delta))
+        p95_stable = (p95_change <= max(p95_threshold * abs(temp_p95), min_token_delta))
+
+        # Med和P95同时满足约束才提前结束
+        if median_stable and p95_stable:
             return 1
         else:
             return -1
